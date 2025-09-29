@@ -1,4 +1,14 @@
-import type { Post, Comment, ApiResponse, HupuPostListItem, HupuPostDetail, HupuComment } from '../types';
+import type {
+  Post,
+  Comment,
+  ApiResponse,
+  HupuPostListItem,
+  HupuPostDetail,
+  HupuComment,
+  HupuSearchPostItem,
+  SearchPost,
+  SearchSortOption,
+} from '../types';
 import { rewriteHtmlMedia, rewriteMediaUrl, rewriteMediaUrls } from '../utils/proxy';
 
 // 检查环境变量是否存在，如果不存在则使用模拟数据
@@ -9,6 +19,7 @@ const API_BASE = SUPABASE_URL ? `${SUPABASE_URL}/functions/v1` : null;
 const HUPU_PROXY_PREFIX = '/hupu';
 const HUPU_LIST_ENDPOINT = `${HUPU_PROXY_PREFIX}/api/v2/bbs/walkingStreet/threads`;
 const HUPU_DETAIL_ENDPOINT = `${HUPU_PROXY_PREFIX}/api/v1/bbs-thread`;
+const HUPU_SEARCH_ENDPOINT = `${HUPU_PROXY_PREFIX}/api/v2/search2`;
 
 interface HupuOfficialLightReply {
   replyUserName: string;
@@ -109,6 +120,64 @@ interface HupuOfficialComment {
 }
 
 class HupuApiService {
+  private normalizeDateTime(value?: string | number | null): string {
+    if (value === null || value === undefined) {
+      return '';
+    }
+
+    const stringValue = String(value).trim();
+    if (!stringValue) {
+      return '';
+    }
+
+    // relative descriptors keep original
+    if (/刚刚|分钟前|小时前|天前/.test(stringValue)) {
+      return stringValue;
+    }
+
+    // pure number timestamp
+    if (/^\d+$/.test(stringValue)) {
+      const numeric = Number(stringValue);
+      const timestamp = stringValue.length === 10 ? numeric * 1000 : numeric;
+      const date = new Date(timestamp);
+      if (!Number.isNaN(date.getTime())) {
+        return date.toISOString();
+      }
+    }
+
+    // month-day format without year
+    if (/^\d{1,2}-\d{1,2}(\s+\d{1,2}:\d{2})?$/.test(stringValue)) {
+      const [datePart, timePart = '00:00'] = stringValue.split(/\s+/);
+      const [monthRaw, dayRaw] = datePart.split('-');
+      const now = new Date();
+      const year = now.getFullYear();
+      const month = Number(monthRaw);
+      const day = Number(dayRaw);
+      if (!Number.isNaN(month) && !Number.isNaN(day)) {
+        const isoCandidate = new Date(`${year}-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}T${timePart.padStart(5, '0')}:00`);
+        if (!Number.isNaN(isoCandidate.getTime())) {
+          // If the date is in the future (e.g., next year), roll back one year
+          if (isoCandidate.getTime() - now.getTime() > 7 * 24 * 60 * 60 * 1000) {
+            isoCandidate.setFullYear(year - 1);
+          }
+          return isoCandidate.toISOString();
+        }
+      }
+    }
+
+    const direct = new Date(stringValue);
+    if (!Number.isNaN(direct.getTime())) {
+      return direct.toISOString();
+    }
+
+    const fallback = new Date(stringValue.replace(/-/g, '/'));
+    if (!Number.isNaN(fallback.getTime())) {
+      return fallback.toISOString();
+    }
+
+    return stringValue;
+  }
+
   private extractCommentsFromDetail(data?: HupuOfficialDetailResponse['data']) {
     const rawComments = data?.r_list ?? [];
     const comments = rawComments.map((item) => this.transformComment(item));
@@ -240,9 +309,9 @@ class HupuApiService {
         level: this.calculateLevel(String(hupuPost.puid)),
         uid: String(hupuPost.puid),
       },
-      createdAt: hupuPost.time,
+      createdAt: this.normalizeDateTime(hupuPost.time),
       replies: Number(hupuPost.replies ?? 0),
-      views: Number(hupuPost.hits ?? hupuPost.playNum ?? 0),
+      views: Number(hupuPost.recommendCount ?? 0),
       likes: Number(hupuPost.recommendCount ?? 0),
       images,
       isTop: Boolean(hupuPost.topThread),
@@ -280,7 +349,7 @@ class HupuApiService {
         level: this.calculateLevel(String(detail.user?.puid ?? detail.tid)),
         uid: String(detail.user?.puid ?? detail.tid),
       },
-      createdAt: detail.user?.date ?? '',
+      createdAt: this.normalizeDateTime(detail.user?.date),
       replies: Number(detail.replies ?? 0),
       views: Number(detail.hits ?? 0),
       likes: Number(detail.rcmd ?? 0),
@@ -305,7 +374,7 @@ class HupuApiService {
         level: this.calculateLevel(String(hupuComment.user?.puid ?? hupuComment.pid)),
         uid: String(hupuComment.user?.puid ?? hupuComment.pid),
       },
-      createdAt: hupuComment.user?.date ?? '',
+      createdAt: this.normalizeDateTime(hupuComment.user?.date),
       likes: Number(hupuComment.light ?? hupuComment.like_count ?? 0),
       floor: Number(hupuComment.floor ?? hupuComment.pid ?? 0),
       replies: hupuComment.replies ? Number(hupuComment.replies) : 0,
@@ -313,6 +382,7 @@ class HupuApiService {
         username: hupuComment.quote_info.username,
         content: rewriteHtmlMedia(hupuComment.quote_info.content),
       } : undefined,
+      images: rewriteMediaUrls(this.extractImagesFromContent(hupuComment.content ?? '')),
     };
   }
 
@@ -396,7 +466,7 @@ class HupuApiService {
       const data = response.data ?? {};
       const detail = {
         ...(data.t_detail ?? {}),
-        content: data.t_desc?.desc ?? data.t_detail?.content,
+        content: data.t_detail?.content ?? data.t_desc?.desc,
         user: data.t_detail?.user ?? data.t_author,
       };
       return {
@@ -429,7 +499,7 @@ class HupuApiService {
       const data = response.data ?? {};
       const detail = {
         ...(data.t_detail ?? {}),
-        content: data.t_desc?.desc ?? data.t_detail?.content,
+        content: data.t_detail?.content ?? data.t_desc?.desc,
         user: data.t_detail?.user ?? data.t_author,
       };
 
@@ -525,6 +595,86 @@ class HupuApiService {
         };
       }
       throw error;
+    }
+  }
+
+  async searchPostsV2(
+    keyword: string,
+    page: number = 1,
+    sort: string = 'general',
+  ): Promise<ApiResponse<{ posts: SearchPost[]; sorts: SearchSortOption[]; totalPages: number }>> {
+    try {
+      const params = new URLSearchParams({
+        keyword,
+        puid: '0',
+        type: 'posts',
+        topicId: '0',
+      });
+      params.append('post_sort', sort);
+      params.append('page', String(page));
+
+      const url = `${HUPU_SEARCH_ENDPOINT}?${params.toString()}`;
+      const response = await this.requestOfficial<{ data?: { result?: any; postSortList?: Array<{ postSort: string; name: string }> } }>(url);
+      const result = response.data?.result;
+
+      const items: HupuSearchPostItem[] = Array.isArray(result?.data) ? result.data : [];
+
+      const posts: SearchPost[] = items
+        .filter((item) => !item.display_type || item.display_type === 'threads')
+        .map((item) => {
+          const createdAt = item.addtime ? new Date(Number(item.addtime) * 1000).toISOString() : '';
+          return {
+            id: String(item.id ?? item.itemid ?? ''),
+            titleHtml: rewriteHtmlMedia(item.title ?? ''),
+            contentHtml: rewriteHtmlMedia(item.content ?? ''),
+            author: {
+              username: item.username ?? '匿名用户',
+              avatar: rewriteMediaUrl(item.header) || this.getDefaultAvatar(),
+              uid: String(item.puid ?? ''),
+            },
+            replies: Number(item.replies ?? 0),
+            lights: Number(item.lights ?? 0),
+            recommends: Number(item.recNum ?? 0),
+            createdAt,
+            forumName: item.forum_name,
+            link: item.link,
+          };
+        });
+
+      const hasNext = Boolean(result?.hasNextPage);
+      const totalPages = Number(result?.totalPage ?? page);
+      const sorts: SearchSortOption[] = Array.isArray(response.data?.postSortList)
+        ? response.data?.postSortList.map((item) => ({
+            postSort: item.postSort,
+            name: item.name,
+          }))
+        : [];
+
+      return {
+        success: true,
+        data: {
+          posts,
+          sorts,
+          totalPages,
+        },
+        hasMore: hasNext,
+        total: Number(result?.count ?? posts.length),
+        page,
+        message: undefined,
+      };
+    } catch (error) {
+      console.error('Failed to fetch search results:', error);
+      return {
+        success: false,
+        data: {
+          posts: [],
+          sorts: [],
+          totalPages: 0,
+        },
+        message: '搜索失败，请稍后重试',
+        page,
+        hasMore: false,
+      };
     }
   }
 }

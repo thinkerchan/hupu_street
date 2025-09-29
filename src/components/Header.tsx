@@ -10,6 +10,10 @@ const Header: React.FC<HeaderProps> = ({ onSearch, searchQuery }) => {
   const [localSearchQuery, setLocalSearchQuery] = useState(searchQuery);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
+  React.useEffect(() => {
+    setLocalSearchQuery(searchQuery);
+  }, [searchQuery]);
+
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
     onSearch(localSearchQuery);

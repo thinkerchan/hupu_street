@@ -49,6 +49,7 @@ export interface Comment {
     username: string;
     content: string;
   };
+  images?: string[];
 }
 
 export interface ApiResponse<T> {
@@ -97,4 +98,47 @@ export interface HupuComment {
   create_time: string;
   floor: number;
   like_count: number;
+}
+
+export interface HupuSearchPostItem {
+  id: number | string;
+  itemid?: string;
+  title?: string;
+  content?: string;
+  replies?: number;
+  lights?: number;
+  recNum?: number;
+  username?: string;
+  header?: string;
+  puid?: number | string;
+  addtime?: number;
+  lastPostTime?: number;
+  picture?: string;
+  pic?: boolean;
+  img?: string | null;
+  forum_name?: string;
+  link?: string;
+  display_type?: string;
+}
+
+export interface SearchPost {
+  id: string;
+  titleHtml: string;
+  contentHtml: string;
+  author: {
+    username: string;
+    avatar: string;
+    uid: string;
+  };
+  replies: number;
+  lights: number;
+  recommends: number;
+  createdAt: string;
+  forumName?: string;
+  link?: string;
+}
+
+export interface SearchSortOption {
+  postSort: string;
+  name: string;
 }

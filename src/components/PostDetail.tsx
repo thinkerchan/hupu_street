@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { ArrowLeft, Eye, MessageCircle, Clock, ExternalLink, RefreshCw, Loader2 } from 'lucide-react';
 import { hupuApi } from '../services/api';
 import type { Post, Comment } from '../types';
@@ -7,19 +7,35 @@ import { rewriteMediaUrl } from '../utils/proxy';
 interface PostDetailProps {
   post: Post;
   onBack: () => void;
+  initialComments?: Comment[];
+  initialHasMoreComments?: boolean;
 }
 
-const PostDetail: React.FC<PostDetailProps> = ({ post: initialPost, onBack }) => {
+const PostDetail: React.FC<PostDetailProps> = ({
+  post: initialPost,
+  onBack,
+  initialComments,
+  initialHasMoreComments,
+}) => {
+  const hasInitialComments = Array.isArray(initialComments);
   const [post, setPost] = useState<Post>(initialPost);
-  const [comments, setComments] = useState<Comment[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [comments, setComments] = useState<Comment[]>(initialComments ?? []);
+  const [loading, setLoading] = useState(!hasInitialComments);
   const [loadingComments, setLoadingComments] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [commentsPage, setCommentsPage] = useState(1);
-  const [hasMoreComments, setHasMoreComments] = useState(false);
+  const [commentsPage, setCommentsPage] = useState(hasInitialComments ? 1 : 0);
+  const [hasMoreComments, setHasMoreComments] = useState(
+    hasInitialComments ? (initialHasMoreComments ?? (initialComments?.length ?? 0) >= 20) : true
+  );
+
+  const isFetchingRef = useRef(false);
 
   const loadPostDetail = useCallback(async () => {
+    if (isFetchingRef.current) {
+      return;
+    }
     try {
+      isFetchingRef.current = true;
       setLoading(true);
       setError(null);
       setComments([]);
@@ -41,13 +57,23 @@ const PostDetail: React.FC<PostDetailProps> = ({ post: initialPost, onBack }) =>
       setError(errorMessage);
       console.error('Failed to load post detail:', err);
     } finally {
+      isFetchingRef.current = false;
       setLoading(false);
     }
   }, [initialPost.id]);
 
   useEffect(() => {
-    loadPostDetail();
-  }, [initialPost.id, loadPostDetail]);
+    setPost(initialPost);
+    if (hasInitialComments) {
+      setComments(initialComments ?? []);
+      setHasMoreComments(initialHasMoreComments ?? ((initialComments?.length ?? 0) >= 20));
+      setCommentsPage(1);
+      setError(null);
+      setLoading(false);
+    } else {
+      loadPostDetail();
+    }
+  }, [initialPost, hasInitialComments, initialComments, initialHasMoreComments, loadPostDetail]);
 
   const loadMoreComments = async () => {
     if (loadingComments || !hasMoreComments) return;
@@ -70,7 +96,16 @@ const PostDetail: React.FC<PostDetailProps> = ({ post: initialPost, onBack }) =>
   };
 
   const formatTime = (dateString: string) => {
-    const date = new Date(dateString);
+    if (!dateString) {
+      return '';
+    }
+
+    const parsed = Date.parse(dateString);
+    if (Number.isNaN(parsed)) {
+      return dateString;
+    }
+
+    const date = new Date(parsed);
     const now = new Date();
     const diff = now.getTime() - date.getTime();
     const minutes = Math.floor(diff / 60000);
@@ -174,9 +209,9 @@ const PostDetail: React.FC<PostDetailProps> = ({ post: initialPost, onBack }) =>
         </div>
       </div>
 
-      <div className="max-w-4xl mx-auto px-4 py-6">
+      <div className="max-w-4xl mx-auto px-0 md:px-4 md:py-6 ">
         {/* Post Content */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 mb-6">
+        <div className="bg-white md:rounded-xl shadow-sm border border-gray-100 p-2 md:p-6 mb-6">
           {/* Author Info */}
           <div className="flex items-center space-x-3 mb-4">
             <div className="relative">
@@ -185,7 +220,7 @@ const PostDetail: React.FC<PostDetailProps> = ({ post: initialPost, onBack }) =>
                 alt={post.author.username}
                 className="w-12 h-12 rounded-full object-cover ring-2 ring-gray-100"
               />
-              <div className="absolute -bottom-1 -right-1 bg-gradient-to-r from-orange-500 to-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center font-medium">
+              <div className="absolute top-0 right-0 translate-x-1/2 -translate-y-1/2 bg-gradient-to-r from-orange-500 to-red-500 text-white text-xs px-1.5 py-0.5 rounded-full flex items-center justify-center font-semibold shadow-sm">
                 {post.author.level}
               </div>
             </div>
@@ -250,7 +285,7 @@ const PostDetail: React.FC<PostDetailProps> = ({ post: initialPost, onBack }) =>
         </div>
 
         {/* Comments */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+        <div className="bg-white md:rounded-xl shadow-sm md:border border-gray-100 p-6">
           <h3 className="font-semibold mb-6 flex items-center space-x-2">
             <MessageCircle className="h-5 w-5" />
             <span>评论 ({post.replies})</span>
@@ -258,14 +293,14 @@ const PostDetail: React.FC<PostDetailProps> = ({ post: initialPost, onBack }) =>
 
           <div className="space-y-6">
             {comments.map((comment) => (
-              <div key={comment.id} className="flex space-x-3">
+              <div key={comment.id} className="flex space-x-3 border-b pb-2">
                 <div className="relative flex-shrink-0">
                   <img
                     src={rewriteMediaUrl(comment.author.avatar) || comment.author.avatar}
                     alt={comment.author.username}
                     className="w-10 h-10 rounded-full object-cover ring-2 ring-gray-100"
                   />
-                  <div className="absolute -bottom-1 -right-1 bg-gradient-to-r from-orange-500 to-red-500 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center">
+                  <div data-desc="用户级别" className="absolute top-0 right-0 translate-x-1/2 -translate-y-1/2 bg-gradient-to-r from-orange-500 to-red-500 text-white text-[10px] px-1 py-0.5 rounded-full flex items-center justify-center font-semibold shadow-sm">
                     {comment.author.level}
                   </div>
                 </div>
@@ -281,13 +316,39 @@ const PostDetail: React.FC<PostDetailProps> = ({ post: initialPost, onBack }) =>
                       {formatTime(comment.createdAt)}
                     </span>
                   </div>
+                  {comment.quote && (
+                    <div className="mb-3 rounded-lg border border-gray-100 bg-gray-50 px-3 py-2">
+                      <div className="text-xs text-gray-500 mb-1">
+                        @{comment.quote.username}
+                      </div>
+                      <div
+                        className="text-sm text-gray-600 leading-relaxed"
+                        dangerouslySetInnerHTML={{ __html: comment.quote.content }}
+                      />
+                    </div>
+                  )}
                   <div
                     className="text-gray-700 mb-3 leading-relaxed"
                     dangerouslySetInnerHTML={{ __html: comment.content }}
                   />
+                  {comment.images && comment.images.length > 0 && (
+                    <div className="mb-3 grid grid-cols-2 gap-3">
+                      {comment.images.map((imgUrl, index) => (
+                        <img
+                          key={`${comment.id}-img-${index}`}
+                          src={rewriteMediaUrl(imgUrl) || imgUrl}
+                          alt=""
+                          className="w-full h-36 object-cover rounded-lg border border-gray-100"
+                          loading="lazy"
+                          onClick={() => window.open(rewriteMediaUrl(imgUrl) || imgUrl, '_blank')}
+                        />
+                      ))}
+                    </div>
+                  )}
                   <div className="flex items-center space-x-4">
                     <span className="text-sm text-gray-500">
-                      {comment.likes > 0 && `${comment.likes} 个赞`}
+                      {comment.likes > 0 && `${comment.likes} 个赞 `}
+                      {comment.replies > 0 ? `${comment.replies} 条回复` : ''}
                     </span>
                   </div>
                 </div>

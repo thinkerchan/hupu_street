@@ -1,5 +1,5 @@
 import React from 'react';
-import { Eye, MessageCircle, Clock, Pin, TrendingUp, ExternalLink } from 'lucide-react';
+import { Eye, MessageCircle, Clock, Pin, TrendingUp, ExternalLink, ThumbsUp } from 'lucide-react';
 import type { Post } from '../types';
 import { rewriteMediaUrl } from '../utils/proxy';
 
@@ -82,7 +82,7 @@ const PostCard: React.FC<PostCardProps> = ({ post, onClick }) => {
               alt={post.author.username}
               className="w-10 h-10 rounded-full object-cover ring-2 ring-gray-100"
             />
-            <div className="absolute -bottom-1 -right-1 bg-gradient-to-r from-orange-500 to-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center font-medium">
+            <div className="absolute top-0 right-0 translate-x-1/2 -translate-y-1/2 bg-gradient-to-r from-orange-500 to-red-500 text-white text-[10px] px-1.5 py-0.5 rounded-full flex items-center justify-center font-semibold shadow-sm">
               {post.author.level}
             </div>
           </div>
@@ -161,7 +161,7 @@ const PostCard: React.FC<PostCardProps> = ({ post, onClick }) => {
       <div className="flex items-center justify-between text-sm">
         <div className="flex items-center space-x-4 text-gray-500">
           <div className="flex items-center space-x-1">
-            <Eye className="h-4 w-4" />
+            <ThumbsUp className="h-4 w-4" />
             <span>{formatNumber(post.views)}</span>
           </div>
           <div className="flex items-center space-x-1">
