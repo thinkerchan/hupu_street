@@ -1,6 +1,4 @@
 const DEFAULT_BASE_URL = 'http://localhost';
-const MEDIA_PROXY_ORIGIN = 'https://images.weserv.nl';
-
 const MEDIA_HOSTS = new Set([
   'i1.hoopchina.com.cn',
   'i2.hoopchina.com.cn',
@@ -16,14 +14,6 @@ const MEDIA_HOSTS = new Set([
   'w1.hoopchina.com.cn',
 ]);
 
-const isDev = typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.DEV;
-
-function buildProxyUrl(url: URL): string {
-  const target = `${url.host}${url.pathname}${url.search}`;
-  const encoded = encodeURIComponent(target.replace(/^https?:\/\//, ''));
-  return `${MEDIA_PROXY_ORIGIN}/?url=${encoded}`;
-}
-
 export function rewriteMediaUrl(url?: string | null): string {
   if (!url) {
     return '';
@@ -31,19 +21,15 @@ export function rewriteMediaUrl(url?: string | null): string {
   try {
     const base = typeof window !== 'undefined' ? window.location.origin : DEFAULT_BASE_URL;
     const parsed = new URL(url, base);
-    if (parsed.host === 'images.weserv.nl') {
-      return url;
-    }
     if (!MEDIA_HOSTS.has(parsed.host)) {
       return parsed.href;
     }
-
-    if (!isDev) {
-      return buildProxyUrl(parsed);
+    const match = parsed.host.match(/^(i\d+|w1)\.hoopchina\.com\.cn$/i);
+    if (!match) {
+      return parsed.href;
     }
-
-    // 在开发环境尽量使用原始链接以便依赖本地代理，若失败则回退到代理服务
-    return buildProxyUrl(parsed);
+    const prefix = match[1].toLowerCase();
+    return `/${prefix}${parsed.pathname}${parsed.search}`;
   } catch (error) {
     console.warn('rewriteMediaUrl failed:', error);
     return url;

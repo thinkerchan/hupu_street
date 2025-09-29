@@ -209,9 +209,9 @@ const PostDetail: React.FC<PostDetailProps> = ({
         </div>
       </div>
 
-      <div className="max-w-4xl mx-auto px-0 md:px-4 md:py-6 ">
+      <div className="max-w-4xl mx-auto px-0 md:px-4 md:py-6 pt-2">
         {/* Post Content */}
-        <div className="bg-white md:rounded-xl shadow-sm border border-gray-100 p-2 md:p-6 mb-6">
+        <div className="bg-white md:rounded-xl shadow-sm border border-gray-100 p-3 md:p-6 mb-6">
           {/* Author Info */}
           <div className="flex items-center space-x-3 mb-4">
             <div className="relative">
@@ -247,7 +247,12 @@ const PostDetail: React.FC<PostDetailProps> = ({
           <div className="prose prose-gray max-w-none mb-6">
             <div
               className="text-gray-700 leading-relaxed whitespace-pre-wrap"
-              dangerouslySetInnerHTML={{ __html: post.content }}
+              dangerouslySetInnerHTML={{
+                __html: post.content?.replace(
+                  /<video([^>]*)>/g,
+                  '<video$1 controls style="display:block;width: 100%;">'
+                ) || ''
+              }}
             />
           </div>
 
@@ -285,7 +290,7 @@ const PostDetail: React.FC<PostDetailProps> = ({
         </div>
 
         {/* Comments */}
-        <div className="bg-white md:rounded-xl shadow-sm md:border border-gray-100 p-6">
+        <div className="bg-white md:rounded-xl shadow-sm md:border border-gray-100 p-3 md:p-6">
           <h3 className="font-semibold mb-6 flex items-center space-x-2">
             <MessageCircle className="h-5 w-5" />
             <span>评论 ({post.replies})</span>
@@ -293,7 +298,7 @@ const PostDetail: React.FC<PostDetailProps> = ({
 
           <div className="space-y-6">
             {comments.map((comment) => (
-              <div key={comment.id} className="flex space-x-3 border-b pb-2">
+              <div key={comment.id} className="flex space-x-3 border-t pt-5">
                 <div className="relative flex-shrink-0">
                   <img
                     src={rewriteMediaUrl(comment.author.avatar) || comment.author.avatar}
@@ -328,7 +333,7 @@ const PostDetail: React.FC<PostDetailProps> = ({
                     </div>
                   )}
                   <div
-                    className="text-gray-700 mb-3 leading-relaxed"
+                    className="text-gray-700 mb-3 leading-relaxed break-words"
                     dangerouslySetInnerHTML={{ __html: comment.content }}
                   />
                   {comment.images && comment.images.length > 0 && (

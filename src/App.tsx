@@ -5,6 +5,7 @@ import PostList from './components/PostList';
 import PostDetail from './components/PostDetail';
 import SearchPage from './components/SearchPage';
 import { hupuApi } from './services/api';
+import type { Post, Comment } from './types';
 
 function App() {
   const [currentView, setCurrentView] = useState<'list' | 'detail' | 'search'>('list');
@@ -75,6 +76,7 @@ function App() {
       if (!hash || hash === '#' || hash === '#/') {
         if (!cancelled) {
           setCurrentView('list');
+          setSearchKeyword('');
           setSelectedPost(null);
           setPreloadedDetail(null);
           selectedPostRef.current = null;
@@ -101,6 +103,7 @@ function App() {
       if (!match) {
         if (!cancelled) {
           setCurrentView('list');
+          setSearchKeyword('');
           setSelectedPost(null);
           setPreloadedDetail(null);
           selectedPostRef.current = null;

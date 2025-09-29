@@ -1,0 +1,29 @@
+{
+  "builds": [
+    {
+      "src": "package.json",
+      "use": "@vercel/static-build",
+      "config": {
+        "distDir": "dist"
+      }
+    }
+  ],
+  "rewrites": [
+    {
+      "source": "/hupu/:path*",
+      "destination": "/api/hupu/:path*"
+    },
+    {
+      "source": "/i:prefix/:path*",
+      "destination": "/api/image/i:prefix/:path*"
+    },
+    {
+      "source": "/w:prefix/:path*",
+      "destination": "/api/image/w:prefix/:path*"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
+}
