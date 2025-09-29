@@ -4,7 +4,7 @@ import type { Post, Comment, ApiResponse, HupuPostListItem, HupuPostDetail, Hupu
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-const API_BASE = SUPABASE_URL ? `${SUPABASE_URL}/functions/v1/hupu-proxy` : null;
+const API_BASE = SUPABASE_URL ? `${SUPABASE_URL}/functions/v1` : null;
 
 class HupuApiService {
   private async request<T>(endpoint: string, options?: RequestInit): Promise<ApiResponse<T>> {
@@ -22,7 +22,7 @@ class HupuApiService {
         ...options?.headers,
       };
       
-      const response = await fetch(`${API_BASE}${endpoint}`, {
+      const response = await fetch(`${API_BASE}/hupu-proxy${endpoint}`, {
         headers,
         ...options,
       });
