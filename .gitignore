@@ -10,6 +10,7 @@ node_modules
 dist
 dist-ssr
 *.local
+playwright-mcp-artifacts
 
 .vscode/*
 !.vscode/extensions.json

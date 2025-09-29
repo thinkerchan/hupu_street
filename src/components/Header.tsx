@@ -25,7 +25,7 @@ const Header: React.FC<HeaderProps> = ({ onSearch, searchQuery }) => {
               <Home className="h-5 w-5 text-white" />
             </div>
             <div>
-              <h1 className="text-xl font-bold text-gray-900">虎扑步行街</h1>
+              <h1 className="text-xl font-bold text-gray-900">虎扑步行街纯净版</h1>
               <p className="text-xs text-gray-500 hidden sm:block">简洁版</p>
             </div>
           </div>
@@ -49,7 +49,7 @@ const Header: React.FC<HeaderProps> = ({ onSearch, searchQuery }) => {
             <button className="p-2 text-gray-400 hover:text-gray-600 transition-colors">
               <User className="h-5 w-5" />
             </button>
-            
+
             {/* Mobile Menu Button */}
             <button
               onClick={() => setIsMenuOpen(!isMenuOpen)}

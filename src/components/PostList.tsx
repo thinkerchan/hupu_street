@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Loader2, AlertCircle, RefreshCw } from 'lucide-react';
+import { Loader2, AlertCircle, RefreshCw, MessageCircle } from 'lucide-react';
 import PostCard from './PostCard';
 import { hupuApi } from '../services/api';
 import type { Post } from '../types';
@@ -16,8 +16,32 @@ const PostList: React.FC<PostListProps> = ({ searchQuery, onPostClick }) => {
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
+  const inFlightRequests = React.useRef<Set<string>>(new Set());
+
+  const mergeUniquePosts = useCallback((existing: Post[], incoming: Post[]) => {
+    if (existing.length === 0 && incoming.length === 0) {
+      return existing;
+    }
+    const ordered = new Map<string, Post>();
+    existing.forEach((item) => {
+      if (!ordered.has(item.id)) {
+        ordered.set(item.id, item);
+      }
+    });
+    incoming.forEach((item) => {
+      if (!ordered.has(item.id)) {
+        ordered.set(item.id, item);
+      }
+    });
+    return Array.from(ordered.values());
+  }, []);
 
   const loadPosts = useCallback(async (pageNum: number, reset = false) => {
+    const requestKey = `${searchQuery ?? ''}-${pageNum}`;
+    if (inFlightRequests.current.has(requestKey)) {
+      return;
+    }
+    inFlightRequests.current.add(requestKey);
     try {
       setError(null);
       if (pageNum === 1) {
@@ -26,17 +50,28 @@ const PostList: React.FC<PostListProps> = ({ searchQuery, onPostClick }) => {
         setLoadingMore(true);
       }
 
-      const response = searchQuery 
+      const response = searchQuery
         ? await hupuApi.searchGambiaPosts(searchQuery, pageNum)
         : await hupuApi.getGambiaPosts(pageNum);
 
       if (response.success) {
+        const hasMoreFlag = response.hasMore ?? response.data.length >= 20;
         if (reset || pageNum === 1) {
-          setPosts(response.data);
+          const uniquePosts = mergeUniquePosts([], response.data);
+          setPosts(uniquePosts);
+          setHasMore(hasMoreFlag);
         } else {
-          setPosts(prev => [...prev, ...response.data]);
+          let appended = false;
+          setPosts((prev) => {
+            const next = mergeUniquePosts(prev, response.data);
+            appended = next.length > prev.length;
+            return next;
+          });
+          setHasMore(hasMoreFlag);
+          if (!appended && hasMoreFlag && response.data.length > 0) {
+            console.debug('No unique posts appended for page', pageNum);
+          }
         }
-        setHasMore(response.hasMore ?? response.data.length >= 20);
       } else {
         throw new Error(response.message || '加载失败');
       }
@@ -46,23 +81,24 @@ const PostList: React.FC<PostListProps> = ({ searchQuery, onPostClick }) => {
       setError(errorMessage);
       console.error('Failed to load posts:', err);
     } finally {
+      inFlightRequests.current.delete(requestKey);
       setLoading(false);
       setLoadingMore(false);
     }
-  }, [searchQuery]);
+  }, [searchQuery, mergeUniquePosts]);
 
   useEffect(() => {
     setPage(1);
     loadPosts(1, true);
   }, [searchQuery, loadPosts]);
 
-  const handleLoadMore = () => {
+  const handleLoadMore = useCallback(() => {
     if (!loadingMore && hasMore) {
       const nextPage = page + 1;
       setPage(nextPage);
       loadPosts(nextPage);
     }
-  };
+  }, [loadingMore, hasMore, page, loadPosts]);
 
   const handleRefresh = () => {
     setPage(1);
@@ -84,7 +120,7 @@ const PostList: React.FC<PostListProps> = ({ searchQuery, onPostClick }) => {
 
     window.addEventListener('scroll', handleScroll);
     return () => window.removeEventListener('scroll', handleScroll);
-  }, [loadingMore, hasMore, loading]);
+  }, [loadingMore, hasMore, loading, handleLoadMore]);
 
   if (loading) {
     return (

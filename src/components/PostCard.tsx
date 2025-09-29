@@ -1,6 +1,7 @@
 import React from 'react';
 import { Eye, MessageCircle, Clock, Pin, TrendingUp, ExternalLink } from 'lucide-react';
 import type { Post } from '../types';
+import { rewriteMediaUrl } from '../utils/proxy';
 
 interface PostCardProps {
   post: Post;
@@ -9,7 +10,38 @@ interface PostCardProps {
 
 const PostCard: React.FC<PostCardProps> = ({ post, onClick }) => {
   const formatTime = (dateString: string) => {
-    const date = new Date(dateString);
+    if (!dateString) {
+      return '未知时间';
+    }
+
+    const normalizeDate = (value: string): Date | null => {
+      const direct = new Date(value);
+      if (!Number.isNaN(direct.getTime())) {
+        return direct;
+      }
+
+      const replaced = new Date(value.replace(/-/g, '/'));
+      if (!Number.isNaN(replaced.getTime())) {
+        return replaced;
+      }
+
+      const numeric = Number(value);
+      if (!Number.isNaN(numeric)) {
+        const timestamp = value.length === 10 ? numeric * 1000 : numeric;
+        const fromNumeric = new Date(timestamp);
+        if (!Number.isNaN(fromNumeric.getTime())) {
+          return fromNumeric;
+        }
+      }
+
+      return null;
+    };
+
+    const date = normalizeDate(dateString);
+    if (!date) {
+      return dateString;
+    }
+
     const now = new Date();
     const diff = now.getTime() - date.getTime();
     const minutes = Math.floor(diff / 60000);
@@ -41,11 +73,12 @@ const PostCard: React.FC<PostCardProps> = ({ post, onClick }) => {
       className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 cursor-pointer transition-all duration-200 hover:shadow-md hover:border-orange-200 hover:-translate-y-0.5"
     >
       {/* Header */}
+      {/* <img src="https://i5.hoopchina.com.cn/hupuapp/bbs/0/0/thread_0_20250929082008_s_966139_o_w_2160_h_2880_13492.jpg" alt="" /> */}
       <div className="flex items-start justify-between mb-3">
         <div className="flex items-center space-x-3 flex-1 min-w-0">
           <div className="relative flex-shrink-0">
             <img
-              src={post.author.avatar}
+              src={rewriteMediaUrl(post.author.avatar) || post.author.avatar}
               alt={post.author.username}
               className="w-10 h-10 rounded-full object-cover ring-2 ring-gray-100"
             />
@@ -99,7 +132,7 @@ const PostCard: React.FC<PostCardProps> = ({ post, onClick }) => {
             {post.images.slice(0, 3).map((image, index) => (
               <img
                 key={index}
-                src={image}
+                src={rewriteMediaUrl(image) || image}
                 alt=""
                 className="w-full h-20 object-cover rounded-lg"
                 loading="lazy"
@@ -108,7 +141,7 @@ const PostCard: React.FC<PostCardProps> = ({ post, onClick }) => {
             {post.images.length > 3 && (
               <div className="relative">
                 <img
-                  src={post.images[3]}
+                  src={rewriteMediaUrl(post.images[3]) || post.images[3]}
                   alt=""
                   className="w-full h-20 object-cover rounded-lg"
                   loading="lazy"

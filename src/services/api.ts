@@ -1,12 +1,126 @@
 import type { Post, Comment, ApiResponse, HupuPostListItem, HupuPostDetail, HupuComment } from '../types';
+import { rewriteHtmlMedia, rewriteMediaUrl, rewriteMediaUrls } from '../utils/proxy';
 
 // 检查环境变量是否存在，如果不存在则使用模拟数据
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
 const API_BASE = SUPABASE_URL ? `${SUPABASE_URL}/functions/v1` : null;
+const HUPU_PROXY_PREFIX = '/hupu';
+const HUPU_LIST_ENDPOINT = `${HUPU_PROXY_PREFIX}/api/v2/bbs/walkingStreet/threads`;
+const HUPU_DETAIL_ENDPOINT = `${HUPU_PROXY_PREFIX}/api/v1/bbs-thread`;
+
+interface HupuOfficialLightReply {
+  replyUserName: string;
+  content: string;
+  quoteContent?: string;
+  lightCount?: number;
+}
+
+interface HupuOfficialVideo {
+  img?: string;
+  humanDuration?: string;
+  playNum?: number;
+  url?: string;
+}
+
+interface HupuOfficialThreadItem {
+  tid: number | string;
+  title: string;
+  userName: string;
+  userHeader?: string;
+  puid: number | string;
+  time: string;
+  replies?: number | string;
+  hits?: number | string;
+  recommendCount?: number | string;
+  shareNum?: number | string;
+  picList?: Array<{ url?: string }>;
+  topicName?: string;
+  topicIcon?: string;
+  topThread?: boolean;
+  videoThread?: boolean;
+  video?: HupuOfficialVideo;
+  lightReplyResult?: HupuOfficialLightReply & {
+    quoteContent?: string;
+  };
+}
+
+interface HupuOfficialThreadListResponse {
+  data?: {
+    nextPage?: boolean;
+    threadList?: HupuOfficialThreadItem[];
+    cursor?: string;
+  };
+}
+
+interface HupuOfficialDetailUser {
+  puid?: string | number;
+  username?: string;
+  header?: string;
+  date?: string;
+}
+
+interface HupuOfficialDetailInfo {
+  tid?: string | number;
+  title?: string;
+  content?: string;
+  user?: HupuOfficialDetailUser;
+  f_info?: {
+    f_name?: string;
+  };
+  replies?: string | number;
+  hits?: string | number;
+  rcmd?: string | number;
+  is_top?: string | number;
+  lights?: string | number;
+  share?: string | number;
+}
+
+interface HupuOfficialDetailResponse {
+  data?: {
+    t_desc?: {
+      desc?: string;
+    };
+    t_detail?: HupuOfficialDetailInfo;
+    t_author?: HupuOfficialDetailUser;
+    r_list?: HupuOfficialComment[];
+    r_total_page?: string | number;
+  };
+}
+
+interface HupuOfficialComment {
+  pid?: string | number;
+  content?: string;
+  user?: {
+    puid?: string | number;
+    username?: string;
+    header?: string;
+    date?: string;
+  };
+  light?: string | number;
+  like_count?: string | number;
+  floor?: string | number;
+  replies?: string | number;
+  quote_info?: {
+    username?: string;
+    content?: string;
+  };
+}
 
 class HupuApiService {
+  private extractCommentsFromDetail(data?: HupuOfficialDetailResponse['data']) {
+    const rawComments = data?.r_list ?? [];
+    const comments = rawComments.map((item) => this.transformComment(item));
+    const totalPages = Number(data?.r_total_page ?? (comments.length > 0 ? 1 : 0)) || 0;
+
+    return {
+      comments,
+      totalPages,
+      hasMore: totalPages > 1 && comments.length > 0,
+    };
+  }
+
   private async request<T>(endpoint: string, options?: RequestInit): Promise<ApiResponse<T>> {
     // 如果没有配置 Supabase，直接返回模拟数据
     if (!API_BASE || !SUPABASE_ANON_KEY) {
@@ -21,21 +135,29 @@ class HupuApiService {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
         ...options?.headers,
       };
-      
+
       const response = await fetch(`${API_BASE}/hupu-proxy${endpoint}`, {
         headers,
         ...options,
       });
-      
+
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
-      
+
       return await response.json();
     } catch (error) {
       console.error('API request failed:', error);
       throw error;
     }
+  }
+
+  private async requestOfficial<T>(url: string, options?: RequestInit): Promise<T> {
+    const response = await fetch(url, options);
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    return response.json();
   }
 
   // 模拟数据方法
@@ -84,7 +206,7 @@ class HupuApiService {
               is_hot: false,
             },
           ];
-          
+
           resolve({
             success: true,
             data: mockPosts as T,
@@ -104,62 +226,93 @@ class HupuApiService {
   }
 
   // 转换虎扑帖子数据格式
-  private transformPost(hupuPost: HupuPostListItem): Post {
+  private transformPost(hupuPost: HupuOfficialThreadItem | HupuPostListItem): Post {
+    const picList = Array.isArray(hupuPost.picList) ? hupuPost.picList : [];
+    const images = rewriteMediaUrls(picList.map((item: { url?: string }) => item?.url).filter(Boolean) as string[]);
+
     return {
-      id: hupuPost.tid,
+      id: String(hupuPost.tid),
       title: hupuPost.title,
-      content: hupuPost.content_preview || '',
+      content: hupuPost.content || '',
       author: {
-        username: hupuPost.author_name,
-        avatar: hupuPost.author_avatar || this.getDefaultAvatar(),
-        level: this.calculateLevel(hupuPost.author_uid),
-        uid: hupuPost.author_uid,
+        username: hupuPost.userName,
+        avatar: rewriteMediaUrl(hupuPost.userHeader) || this.getDefaultAvatar(),
+        level: this.calculateLevel(String(hupuPost.puid)),
+        uid: String(hupuPost.puid),
       },
-      createdAt: hupuPost.create_time,
-      replies: hupuPost.reply_count,
-      views: hupuPost.view_count,
-      likes: 0, // 虎扑列表页不提供点赞数
-      isTop: hupuPost.is_top,
-      isHot: hupuPost.is_hot,
-      url: `https://bbs.hupu.com/${hupuPost.tid}.html`,
+      createdAt: hupuPost.time,
+      replies: Number(hupuPost.replies ?? 0),
+      views: Number(hupuPost.hits ?? hupuPost.playNum ?? 0),
+      likes: Number(hupuPost.recommendCount ?? 0),
+      images,
+      isTop: Boolean(hupuPost.topThread),
+      isHot: Number(hupuPost.recommendCount ?? 0) > 100,
+      url: `https://m.hupu.com/bbs/${hupuPost.tid}.html`,
+      lightReply: hupuPost.lightReplyResult ? {
+        username: hupuPost.lightReplyResult.replyUserName,
+        content: hupuPost.lightReplyResult.content,
+        quote: hupuPost.lightReplyResult.quoteContent,
+        lightCount: Number(hupuPost.lightReplyResult.lightCount ?? 0),
+      } : undefined,
+      topicName: hupuPost.topicName,
+      shareNum: Number(hupuPost.shareNum ?? 0),
+      video: hupuPost.videoThread ? {
+        cover: rewriteMediaUrl(hupuPost.video?.img),
+        duration: hupuPost.video?.humanDuration,
+        playNum: Number(hupuPost.video?.playNum ?? 0),
+        url: rewriteMediaUrl(hupuPost.video?.url),
+      } : undefined,
     };
   }
 
   // 转换虎扑帖子详情数据格式
-  private transformPostDetail(hupuPost: HupuPostDetail): Post {
+  private transformPostDetail(detail: HupuOfficialDetailInfo | HupuPostDetail): Post {
+    const contentHtml = rewriteHtmlMedia(detail.content ?? '');
+    const images = rewriteMediaUrls(this.extractImagesFromContent(contentHtml));
+
     return {
-      id: hupuPost.tid,
-      title: hupuPost.title,
-      content: hupuPost.content,
+      id: String(detail.tid),
+      title: detail.title,
+      content: contentHtml,
       author: {
-        username: hupuPost.author_name,
-        avatar: hupuPost.author_avatar || this.getDefaultAvatar(),
-        level: this.calculateLevel(hupuPost.author_uid),
-        uid: hupuPost.author_uid,
+        username: detail.user?.username ?? '匿名用户',
+        avatar: rewriteMediaUrl(detail.user?.header?.replace('@45h_45w_2e', '')) || this.getDefaultAvatar(),
+        level: this.calculateLevel(String(detail.user?.puid ?? detail.tid)),
+        uid: String(detail.user?.puid ?? detail.tid),
       },
-      createdAt: hupuPost.create_time,
-      replies: hupuPost.reply_count,
-      views: hupuPost.view_count,
-      likes: 0,
-      images: hupuPost.images,
-      url: `https://bbs.hupu.com/${hupuPost.tid}.html`,
+      createdAt: detail.user?.date ?? '',
+      replies: Number(detail.replies ?? 0),
+      views: Number(detail.hits ?? 0),
+      likes: Number(detail.rcmd ?? 0),
+      images,
+      isTop: detail.is_top === '1',
+      isHot: Number(detail.lights ?? 0) > 100,
+      url: `https://m.hupu.com/bbs/${detail.tid}.html`,
+      lightReply: undefined,
+      topicName: detail.f_info?.f_name,
+      shareNum: Number(detail.share ?? 0),
     };
   }
 
   // 转换虎扑评论数据格式
-  private transformComment(hupuComment: HupuComment): Comment {
+  private transformComment(hupuComment: HupuOfficialComment | HupuComment): Comment {
     return {
-      id: hupuComment.pid,
-      content: hupuComment.content,
+      id: String(hupuComment.pid),
+      content: rewriteHtmlMedia(hupuComment.content),
       author: {
-        username: hupuComment.author_name,
-        avatar: hupuComment.author_avatar || this.getDefaultAvatar(),
-        level: this.calculateLevel(hupuComment.author_uid),
-        uid: hupuComment.author_uid,
+        username: hupuComment.user?.username ?? '匿名评论',
+        avatar: rewriteMediaUrl(hupuComment.user?.header?.replace('@45h_45w_2e', '')) || this.getDefaultAvatar(),
+        level: this.calculateLevel(String(hupuComment.user?.puid ?? hupuComment.pid)),
+        uid: String(hupuComment.user?.puid ?? hupuComment.pid),
       },
-      createdAt: hupuComment.create_time,
-      likes: hupuComment.like_count,
-      floor: hupuComment.floor,
+      createdAt: hupuComment.user?.date ?? '',
+      likes: Number(hupuComment.light ?? hupuComment.like_count ?? 0),
+      floor: Number(hupuComment.floor ?? hupuComment.pid ?? 0),
+      replies: hupuComment.replies ? Number(hupuComment.replies) : 0,
+      quote: hupuComment.quote_info ? {
+        username: hupuComment.quote_info.username,
+        content: rewriteHtmlMedia(hupuComment.quote_info.content),
+      } : undefined,
     };
   }
 
@@ -176,8 +329,49 @@ class HupuApiService {
     return Math.abs(hash) % 25 + 1;
   }
 
+  private extractImagesFromContent(html: string): string[] {
+    if (!html) return [];
+    const regex = /<img[^>]+src=['"]([^'"\s>]+)['"][^>]*>/g;
+    const images: string[] = [];
+    let match;
+    while ((match = regex.exec(html)) !== null) {
+      const url = match[1];
+      if (url.startsWith('http')) {
+        images.push(url);
+      }
+    }
+    return images;
+  }
+
   // 获取步行街帖子列表
-  async getGambiaPosts(page: number = 1): Promise<ApiResponse<Post[]>> {
+  async getGambiaPosts(page: number = 1, cursor?: string): Promise<ApiResponse<Post[]>> {
+    try {
+      const params = new URLSearchParams({ page: String(page) });
+      if (cursor) {
+        params.set('cursor', cursor);
+      }
+      const url = `${HUPU_LIST_ENDPOINT}?${params.toString()}`;
+      const response = await this.requestOfficial<HupuOfficialThreadListResponse>(url);
+      const data = response.data ?? { threadList: [] };
+      const posts = (data.threadList ?? []).map((item) => this.transformPost(item));
+      return {
+        success: true,
+        data: posts,
+        hasMore: Boolean(data.nextPage),
+        total: posts.length,
+        page,
+        message: undefined,
+      };
+    } catch (error) {
+      console.error('Failed to fetch official list:', error);
+      if (API_BASE) {
+        return this.getGambiaPostsViaProxy(page);
+      }
+      throw error;
+    }
+  }
+
+  private async getGambiaPostsViaProxy(page: number): Promise<ApiResponse<Post[]>> {
     const response = await this.request<HupuPostListItem[]>(`/gambia/posts?page=${page}`);
     return {
       ...response,
@@ -186,30 +380,152 @@ class HupuApiService {
   }
 
   // 获取帖子详情
-  async getPost(tid: string): Promise<ApiResponse<Post>> {
-    const response = await this.request<HupuPostDetail>(`/posts/${tid}`);
-    return {
-      ...response,
-      data: this.transformPostDetail(response.data),
-    };
+  async getPost(tid: string, page: number = 1): Promise<ApiResponse<Post>> {
+    if (page === 1) {
+      const response = await this.getPostWithComments(tid);
+      return {
+        success: response.success,
+        data: response.data.post,
+        message: response.message,
+      };
+    }
+
+    try {
+      const url = `${HUPU_DETAIL_ENDPOINT}/${tid}?page=${page}`;
+      const response = await this.requestOfficial<HupuOfficialDetailResponse>(url);
+      const data = response.data ?? {};
+      const detail = {
+        ...(data.t_detail ?? {}),
+        content: data.t_desc?.desc ?? data.t_detail?.content,
+        user: data.t_detail?.user ?? data.t_author,
+      };
+      return {
+        success: true,
+        data: this.transformPostDetail(detail),
+        message: undefined,
+      };
+    } catch (error) {
+      console.error('Failed to fetch official detail:', error);
+      if (API_BASE) {
+        const response = await this.request<HupuPostDetail>(`/posts/${tid}`);
+        return {
+          ...response,
+          data: this.transformPostDetail(response.data),
+        };
+      }
+      throw error;
+    }
+  }
+
+  async getPostWithComments(tid: string): Promise<ApiResponse<{
+    post: Post;
+    comments: Comment[];
+    hasMoreComments: boolean;
+    totalCommentPages: number;
+  }>> {
+    try {
+      const url = `${HUPU_DETAIL_ENDPOINT}/${tid}?page=1`;
+      const response = await this.requestOfficial<HupuOfficialDetailResponse>(url);
+      const data = response.data ?? {};
+      const detail = {
+        ...(data.t_detail ?? {}),
+        content: data.t_desc?.desc ?? data.t_detail?.content,
+        user: data.t_detail?.user ?? data.t_author,
+      };
+
+      const { comments, hasMore, totalPages } = this.extractCommentsFromDetail(data);
+
+      return {
+        success: true,
+        data: {
+          post: this.transformPostDetail(detail),
+          comments,
+          hasMoreComments: hasMore,
+          totalCommentPages: totalPages,
+        },
+      };
+    } catch (error) {
+      console.error('Failed to fetch official detail with comments:', error);
+
+      if (API_BASE) {
+        const [postResponse, commentsResponse] = await Promise.all([
+          this.request<HupuPostDetail>(`/posts/${tid}`),
+          this.request<HupuComment[]>(`/posts/${tid}/comments?page=1`),
+        ]);
+
+        const post = this.transformPostDetail(postResponse.data);
+        const comments = commentsResponse.success
+          ? commentsResponse.data.map((comment) => this.transformComment(comment))
+          : [];
+
+        return {
+          success: postResponse.success,
+          data: {
+            post,
+            comments,
+            hasMoreComments: commentsResponse.success ? (commentsResponse.hasMore ?? false) : false,
+            totalCommentPages: commentsResponse.success && commentsResponse.hasMore ? 2 : 1,
+          },
+          message: postResponse.message ?? commentsResponse.message,
+        };
+      }
+
+      throw error;
+    }
   }
 
   // 获取帖子评论
   async getComments(tid: string, page: number = 1): Promise<ApiResponse<Comment[]>> {
-    const response = await this.request<HupuComment[]>(`/posts/${tid}/comments?page=${page}`);
-    return {
-      ...response,
-      data: response.data.map(comment => this.transformComment(comment)),
-    };
+    try {
+      const url = `${HUPU_DETAIL_ENDPOINT}/${tid}?page=${page}`;
+      const response = await this.requestOfficial<HupuOfficialDetailResponse>(url);
+      const data = response.data ?? {};
+      const comments = (data.r_list ?? []).map((item) => this.transformComment(item));
+      const totalPages = Number(data.r_total_page ?? page);
+      return {
+        success: true,
+        data: comments,
+        hasMore: page < totalPages,
+        page,
+      };
+    } catch (error) {
+      console.error('Failed to fetch official comments:', error);
+      if (API_BASE) {
+        const response = await this.request<HupuComment[]>(`/posts/${tid}/comments?page=${page}`);
+        return {
+          ...response,
+          data: response.data.map(comment => this.transformComment(comment)),
+        };
+      }
+      throw error;
+    }
   }
 
   // 搜索步行街帖子
   async searchGambiaPosts(query: string, page: number = 1): Promise<ApiResponse<Post[]>> {
-    const response = await this.request<HupuPostListItem[]>(`/gambia/search?q=${encodeURIComponent(query)}&page=${page}`);
-    return {
-      ...response,
-      data: response.data.map(post => this.transformPost(post)),
-    };
+    try {
+      const params = new URLSearchParams({ keyword: query, page: String(page) });
+      const url = `${HUPU_LIST_ENDPOINT}?${params.toString()}`;
+      const response = await this.requestOfficial<HupuOfficialThreadListResponse>(url);
+      const data = response.data ?? {};
+      const posts = (data.threadList ?? []).map((item) => this.transformPost(item));
+      return {
+        success: true,
+        data: posts,
+        hasMore: Boolean(data.nextPage),
+        page,
+      };
+    } catch (error) {
+      console.error('Failed to search official list:', error);
+      if (API_BASE) {
+        const response = await this.request<HupuPostListItem[]>(`/gambia/search?q=${encodeURIComponent(query)}&page=${page}`);
+        return {
+          ...response,
+          data: response.data.map(post => this.transformPost(post)),
+        };
+      }
+      throw error;
+    }
   }
 }
 

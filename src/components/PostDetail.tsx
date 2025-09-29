@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { ArrowLeft, Eye, MessageCircle, Clock, ExternalLink, RefreshCw, Loader2 } from 'lucide-react';
 import { hupuApi } from '../services/api';
 import type { Post, Comment } from '../types';
+import { rewriteMediaUrl } from '../utils/proxy';
 
 interface PostDetailProps {
   post: Post;
@@ -15,30 +16,26 @@ const PostDetail: React.FC<PostDetailProps> = ({ post: initialPost, onBack }) =>
   const [loadingComments, setLoadingComments] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [commentsPage, setCommentsPage] = useState(1);
-  const [hasMoreComments, setHasMoreComments] = useState(true);
+  const [hasMoreComments, setHasMoreComments] = useState(false);
 
-  useEffect(() => {
-    loadPostDetail();
-  }, [initialPost.id]);
-
-  const loadPostDetail = async () => {
+  const loadPostDetail = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
-      
-      // 加载帖子详情
-      const postResponse = await hupuApi.getPost(initialPost.id);
-      if (postResponse.success) {
-        setPost(postResponse.data);
-      }
+      setComments([]);
+      setCommentsPage(1);
+      setHasMoreComments(false);
 
-      // 加载评论
-      const commentsResponse = await hupuApi.getComments(initialPost.id, 1);
-      if (commentsResponse.success) {
-        setComments(commentsResponse.data);
-        setHasMoreComments(commentsResponse.hasMore ?? commentsResponse.data.length >= 20);
-      }
+      const response = await hupuApi.getPostWithComments(initialPost.id);
 
+      if (response.success) {
+        setPost(response.data.post);
+        setComments(response.data.comments);
+        setCommentsPage(1);
+        setHasMoreComments(response.data.hasMoreComments);
+      } else {
+        setError(response.message ?? '加载失败');
+      }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : '加载失败';
       setError(errorMessage);
@@ -46,7 +43,11 @@ const PostDetail: React.FC<PostDetailProps> = ({ post: initialPost, onBack }) =>
     } finally {
       setLoading(false);
     }
-  };
+  }, [initialPost.id]);
+
+  useEffect(() => {
+    loadPostDetail();
+  }, [initialPost.id, loadPostDetail]);
 
   const loadMoreComments = async () => {
     if (loadingComments || !hasMoreComments) return;
@@ -55,7 +56,7 @@ const PostDetail: React.FC<PostDetailProps> = ({ post: initialPost, onBack }) =>
       setLoadingComments(true);
       const nextPage = commentsPage + 1;
       const response = await hupuApi.getComments(post.id, nextPage);
-      
+
       if (response.success) {
         setComments(prev => [...prev, ...response.data]);
         setCommentsPage(nextPage);
@@ -180,7 +181,7 @@ const PostDetail: React.FC<PostDetailProps> = ({ post: initialPost, onBack }) =>
           <div className="flex items-center space-x-3 mb-4">
             <div className="relative">
               <img
-                src={post.author.avatar}
+                src={rewriteMediaUrl(post.author.avatar) || post.author.avatar}
                 alt={post.author.username}
                 className="w-12 h-12 rounded-full object-cover ring-2 ring-gray-100"
               />
@@ -209,7 +210,7 @@ const PostDetail: React.FC<PostDetailProps> = ({ post: initialPost, onBack }) =>
 
           {/* Content */}
           <div className="prose prose-gray max-w-none mb-6">
-            <div 
+            <div
               className="text-gray-700 leading-relaxed whitespace-pre-wrap"
               dangerouslySetInnerHTML={{ __html: post.content }}
             />
@@ -222,11 +223,11 @@ const PostDetail: React.FC<PostDetailProps> = ({ post: initialPost, onBack }) =>
                 {post.images.map((image, index) => (
                   <img
                     key={index}
-                    src={image}
+                    src={rewriteMediaUrl(image) || image}
                     alt=""
                     className="w-full h-64 object-cover rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
                     loading="lazy"
-                    onClick={() => window.open(image, '_blank')}
+                    onClick={() => window.open(rewriteMediaUrl(image) || image, '_blank')}
                   />
                 ))}
               </div>
@@ -254,13 +255,13 @@ const PostDetail: React.FC<PostDetailProps> = ({ post: initialPost, onBack }) =>
             <MessageCircle className="h-5 w-5" />
             <span>评论 ({post.replies})</span>
           </h3>
-          
+
           <div className="space-y-6">
             {comments.map((comment) => (
               <div key={comment.id} className="flex space-x-3">
                 <div className="relative flex-shrink-0">
                   <img
-                    src={comment.author.avatar}
+                    src={rewriteMediaUrl(comment.author.avatar) || comment.author.avatar}
                     alt={comment.author.username}
                     className="w-10 h-10 rounded-full object-cover ring-2 ring-gray-100"
                   />
@@ -280,7 +281,7 @@ const PostDetail: React.FC<PostDetailProps> = ({ post: initialPost, onBack }) =>
                       {formatTime(comment.createdAt)}
                     </span>
                   </div>
-                  <div 
+                  <div
                     className="text-gray-700 mb-3 leading-relaxed"
                     dangerouslySetInnerHTML={{ __html: comment.content }}
                   />

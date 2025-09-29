@@ -16,6 +16,20 @@ export interface Post {
   isTop?: boolean;
   isHot?: boolean;
   url: string;
+  topicName?: string;
+  shareNum?: number;
+  lightReply?: {
+    username: string;
+    content: string;
+    quote?: string;
+    lightCount: number;
+  };
+  video?: {
+    cover?: string;
+    duration?: string;
+    playNum: number;
+    url?: string;
+  };
 }
 
 export interface Comment {
@@ -31,6 +45,10 @@ export interface Comment {
   likes: number;
   floor: number;
   replies?: Comment[];
+  quote?: {
+    username: string;
+    content: string;
+  };
 }
 
 export interface ApiResponse<T> {
