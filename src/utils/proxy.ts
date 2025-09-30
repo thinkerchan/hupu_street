@@ -1,4 +1,5 @@
 const DEFAULT_BASE_URL = 'http://localhost';
+const MEDIA_PROXY_ORIGIN = 'https://images.weserv.nl';
 const MEDIA_HOSTS = new Set([
   'i1.hoopchina.com.cn',
   'i2.hoopchina.com.cn',
@@ -14,6 +15,11 @@ const MEDIA_HOSTS = new Set([
   'w1.hoopchina.com.cn',
 ]);
 
+function buildProxyUrl(url: URL): string {
+  const encoded = encodeURIComponent(`${url.host}${url.pathname}${url.search}`.replace(/^https?:\/\//, ''));
+  return `${MEDIA_PROXY_ORIGIN}/?url=${encoded}`;
+}
+
 export function rewriteMediaUrl(url?: string | null): string {
   if (!url) {
     return '';
@@ -21,15 +27,16 @@ export function rewriteMediaUrl(url?: string | null): string {
   try {
     const base = typeof window !== 'undefined' ? window.location.origin : DEFAULT_BASE_URL;
     const parsed = new URL(url, base);
-    if (!MEDIA_HOSTS.has(parsed.host)) {
+
+    if (parsed.host === 'images.weserv.nl') {
       return parsed.href;
     }
-    const match = parsed.host.match(/^(i\d+|w1)\.hoopchina\.com\.cn$/i);
-    if (!match) {
-      return parsed.href;
+
+    if (MEDIA_HOSTS.has(parsed.host)) {
+      return buildProxyUrl(parsed);
     }
-    const prefix = match[1].toLowerCase();
-    return `/${prefix}${parsed.pathname}${parsed.search}`;
+
+    return parsed.href;
   } catch (error) {
     console.warn('rewriteMediaUrl failed:', error);
     return url;

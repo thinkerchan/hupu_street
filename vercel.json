@@ -14,14 +14,6 @@
       "destination": "/api/hupu/:path*"
     },
     {
-      "source": "/i:prefix/:path*",
-      "destination": "/api/image/i:prefix/:path*"
-    },
-    {
-      "source": "/w:prefix/:path*",
-      "destination": "/api/image/w:prefix/:path*"
-    },
-    {
       "source": "/(.*)",
       "destination": "/index.html"
     }

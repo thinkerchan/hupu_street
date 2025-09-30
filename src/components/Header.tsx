@@ -29,8 +29,7 @@ const Header: React.FC<HeaderProps> = ({ onSearch, searchQuery }) => {
               <Home className="h-5 w-5 text-white" />
             </div>
             <div>
-              <h1 className="text-xl font-bold text-gray-900">虎扑步行街纯净版</h1>
-              <p className="text-xs text-gray-500 hidden sm:block">简洁版</p>
+              <h1 className="text-xl font-bold text-gray-900">八卦街</h1>
             </div>
           </div>
 
