@@ -3,6 +3,7 @@ import { ArrowLeft, Eye, MessageCircle, Clock, ExternalLink, RefreshCw, Loader2 
 import { hupuApi } from '../services/api';
 import type { Post, Comment } from '../types';
 import { rewriteMediaUrl } from '../utils/proxy';
+import { formatRelativeTime, formatCount } from '../utils/format';
 
 interface PostDetailProps {
   post: Post;
@@ -93,37 +94,6 @@ const PostDetail: React.FC<PostDetailProps> = ({
     } finally {
       setLoadingComments(false);
     }
-  };
-
-  const formatTime = (dateString: string) => {
-    if (!dateString) {
-      return '';
-    }
-
-    const parsed = Date.parse(dateString);
-    if (Number.isNaN(parsed)) {
-      return dateString;
-    }
-
-    const date = new Date(parsed);
-    const now = new Date();
-    const diff = now.getTime() - date.getTime();
-    const minutes = Math.floor(diff / 60000);
-    const hours = Math.floor(diff / 3600000);
-    const days = Math.floor(diff / 86400000);
-
-    if (minutes < 1) return '刚刚';
-    if (minutes < 60) return `${minutes}分钟前`;
-    if (hours < 24) return `${hours}小时前`;
-    if (days < 7) return `${days}天前`;
-    return date.toLocaleDateString('zh-CN');
-  };
-
-  const formatNumber = (num: number) => {
-    if (num >= 10000) {
-      return `${(num / 10000).toFixed(1)}万`;
-    }
-    return num.toLocaleString();
   };
 
   const handleExternalLink = () => {
@@ -233,7 +203,7 @@ const PostDetail: React.FC<PostDetailProps> = ({
               </div>
               <div className="flex items-center space-x-2 text-sm text-gray-500">
                 <Clock className="h-3 w-3" />
-                <span>{formatTime(post.createdAt)}</span>
+                <span>{formatRelativeTime(post.createdAt)}</span>
               </div>
             </div>
           </div>
@@ -279,7 +249,7 @@ const PostDetail: React.FC<PostDetailProps> = ({
             <div className="flex items-center space-x-6 text-gray-500">
               <div className="flex items-center space-x-1">
                 <Eye className="h-5 w-5" />
-                <span>{formatNumber(post.views)}</span>
+                <span>{formatCount(post.views)}</span>
               </div>
               <div className="flex items-center space-x-1">
                 <MessageCircle className="h-5 w-5" />
@@ -318,7 +288,7 @@ const PostDetail: React.FC<PostDetailProps> = ({
                       {comment.floor}楼
                     </span>
                     <span className="text-sm text-gray-500">
-                      {formatTime(comment.createdAt)}
+                      {formatRelativeTime(comment.createdAt)}
                     </span>
                   </div>
                   {comment.quote && (
@@ -353,7 +323,7 @@ const PostDetail: React.FC<PostDetailProps> = ({
                   <div className="flex items-center space-x-4">
                     <span className="text-sm text-gray-500">
                       {comment.likes > 0 && `${comment.likes} 个赞 `}
-                      {comment.replies > 0 ? `${comment.replies} 条回复` : ''}
+                      {(comment.replies ?? 0) > 0 ? `${comment.replies} 条回复` : ''}
                     </span>
                   </div>
                 </div>

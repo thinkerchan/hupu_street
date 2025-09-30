@@ -3,6 +3,7 @@ import { Loader2, AlertCircle, MessageCircle, Flame, Filter } from 'lucide-react
 import { hupuApi } from '../services/api';
 import type { SearchPost, SearchSortOption } from '../types';
 import { rewriteMediaUrl } from '../utils/proxy';
+import { formatDateTime } from '../utils/format';
 
 interface SearchPageProps {
   keyword: string;
@@ -104,12 +105,6 @@ const SearchPage: React.FC<SearchPageProps> = ({ keyword, onSelectPost }) => {
     ];
   }, [sorts]);
 
-  const formatTime = (isoString: string) => {
-    if (!isoString) return '';
-    const date = new Date(isoString);
-    return date.toLocaleString('zh-CN');
-  };
-
   const handleLoadMore = () => {
     if (!loadingMore && hasMore) {
       loadSearchResults(page + 1, activeSort, true);
@@ -196,7 +191,7 @@ const SearchPage: React.FC<SearchPageProps> = ({ keyword, onSelectPost }) => {
                     <p className="text-xs text-gray-400">{post.forumName ?? '步行街'}</p>
                   </div>
                 </div>
-                <time className="text-xs text-gray-400">{formatTime(post.createdAt)}</time>
+                <time className="text-xs text-gray-400">{formatDateTime(post.createdAt)}</time>
               </header>
 
               <div className="space-y-3">

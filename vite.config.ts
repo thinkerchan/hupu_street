@@ -9,34 +9,16 @@ export default defineConfig({
   },
   server: {
     proxy: {
+      '/api': {
+        target: process.env.VITE_API_URL || 'http://localhost:3000',
+        changeOrigin: true,
+      },
       '/hupu': {
         target: 'https://m.hupu.com',
         changeOrigin: true,
         secure: true,
         rewrite: (path) => path.replace(/^\/hupu/, ''),
-      },
-      ...Object.fromEntries(
-        Array.from({ length: 11 }, (_, i) => {
-          const num = i + 1;
-          const prefix = `/i${num}`;
-          const target = `https://i${num}.hoopchina.com.cn`;
-          return [
-            prefix,
-            {
-              target,
-              changeOrigin: true,
-              secure: true,
-              rewrite: (path) => path.replace(new RegExp(`^${prefix}`), ''),
-              headers: {
-                referer: 'https://m.hupu.com/',
-                origin: 'https://m.hupu.com',
-                'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-              },
-            },
-          ];
-        })
-      ),
-
+      }
     },
   },
 });

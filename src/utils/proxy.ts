@@ -12,6 +12,14 @@ const MEDIA_HOSTS = new Set([
   'i9.hoopchina.com.cn',
   'i10.hoopchina.com.cn',
   'i11.hoopchina.com.cn',
+  'i12.hoopchina.com.cn',
+  'i13.hoopchina.com.cn',
+  'i14.hoopchina.com.cn',
+  'i15.hoopchina.com.cn',
+  'i16.hoopchina.com.cn',
+  'i17.hoopchina.com.cn',
+  'i18.hoopchina.com.cn',
+  'i19.hoopchina.com.cn',
   'w1.hoopchina.com.cn',
 ]);
 

@@ -1,0 +1,27 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:hupu.vercel.app)",
+      "Bash(curl -I \"https://hupu.vercel.app/hupu/api/v2/bbs/walkingStreet/threads?page=1\")",
+      "Bash(curl -s \"https://hupu.vercel.app/api/hupu/api/v2/bbs/walkingStreet/threads?page=1\")",
+      "Bash(curl -s \"https://hupu.vercel.app/api/hupu?path=api/v2/bbs/walkingStreet/threads&page=1\")",
+      "Bash(curl -s \"https://m.hupu.com/api/v2/bbs/walkingStreet/threads?page=1\")",
+      "Bash(curl -s \"https://hupu.vercel.app/hupu/api/v2/bbs/walkingStreet/threads?page=1\")",
+      "Read(//tmp/**)",
+      "Bash(npm install crypto-js)",
+      "Bash(npm install --save-dev @types/crypto-js)",
+      "WebFetch(domain:passport.hupu.com)",
+      "Bash(curl -s \"https://passport.hupu.com/v2/login\")",
+      "Bash(curl -s \"https://passport.hupu.com/v2/login\" -o /tmp/hupu_login.html)",
+      "Bash(curl -s 'https://passport.hupu.com/pc/login' -H 'content-type: application/x-www-form-urlencoded' --data-raw 'username=test&password=test')",
+      "Bash(curl -s \"https://passport.hupu.com/pc/login\" -H \"content-type: application/x-www-form-urlencoded\" --data \"username=test&password=test\")",
+      "Bash(curl -s 'https://passport.hupu.com/pc/login' -H 'content-type: application/x-www-form-urlencoded' -d 'username=test&password=test')",
+      "Bash(curl -I \"https://passport.hupu.com/pc/login\")",
+      "Bash(curl -s \"https://passport.hupu.com/pc/login\" -X POST -d \"username=test&password=123456\" -H \"Content-Type: application/x-www-form-urlencoded\")",
+      "Bash(curl -s \"https://passport.hupu.com/ajax/login\" -X POST -d \"account=test&password=test123\" -H \"Content-Type: application/x-www-form-urlencoded\")",
+      "Bash(curl -s \"https://passport.hupu.com/password/login\" -X POST -d \"username=test&password=test\" -H \"Content-Type: application/x-www-form-urlencoded\")"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

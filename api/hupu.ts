@@ -14,9 +14,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return;
   }
 
-  const segments = req.query.path;
-  const parts = Array.isArray(segments) ? segments : segments ? [segments] : [];
-  const restPath = parts.join('/');
+  // Extract path from query parameter (set by vercel rewrite)
+  const pathParam = req.query.path;
+  const restPath = typeof pathParam === 'string' ? pathParam : Array.isArray(pathParam) ? pathParam.join('/') : '';
 
   const searchParams = new URLSearchParams();
   Object.entries(req.query).forEach(([key, value]) => {
@@ -30,6 +30,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const queryString = searchParams.toString();
   const targetUrl = `${HUPU_ORIGIN}/${restPath}${queryString ? `?${queryString}` : ''}`;
+
+  console.log('Proxying request:', { restPath, queryString, targetUrl });
 
   try {
     const headers: Record<string, string> = {
@@ -56,15 +58,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     const response = await fetch(targetUrl, init);
+    const data = await response.arrayBuffer();
+
+    console.log('Response status:', response.status, 'Size:', data.byteLength);
 
     res.status(response.status);
     res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
 
-    response.headers.forEach((value, key) => {
-      res.setHeader(key, value);
-    });
+    // Copy relevant headers
+    const contentType = response.headers.get('content-type');
+    if (contentType) {
+      res.setHeader('Content-Type', contentType);
+    }
 
-    res.send(Buffer.from(await response.arrayBuffer()));
+    res.send(Buffer.from(data));
   } catch (error) {
     console.error('Proxy request failed:', error);
     res

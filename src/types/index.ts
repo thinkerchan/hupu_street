@@ -1,3 +1,19 @@
+export interface LoginResponse {
+  success: boolean;
+  data?: {
+    authToken: string;
+    userInfo: UserInfo;
+  };
+  message?: string;
+}
+
+export interface UserInfo {
+  uid?: string;
+  username?: string;
+  avatar?: string;
+  [key: string]: any;
+}
+
 export interface Post {
   id: string;
   title: string;
@@ -44,7 +60,7 @@ export interface Comment {
   createdAt: string;
   likes: number;
   floor: number;
-  replies?: Comment[];
+  replies?: number;
   quote?: {
     username: string;
     content: string;
@@ -98,6 +114,11 @@ export interface HupuComment {
   create_time: string;
   floor: number;
   like_count: number;
+  replies?: number | string;
+  quote_info?: {
+    username?: string;
+    content?: string;
+  };
 }
 
 export interface HupuSearchPostItem {

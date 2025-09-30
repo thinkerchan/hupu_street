@@ -8,6 +8,8 @@ import type {
   HupuSearchPostItem,
   SearchPost,
   SearchSortOption,
+  LoginResponse,
+  UserInfo,
 } from '../types';
 import { rewriteHtmlMedia, rewriteMediaUrl, rewriteMediaUrls } from '../utils/proxy';
 
@@ -38,6 +40,7 @@ interface HupuOfficialVideo {
 interface HupuOfficialThreadItem {
   tid: number | string;
   title: string;
+  content?: string;
   userName: string;
   userHeader?: string;
   puid: number | string;
@@ -295,94 +298,181 @@ class HupuApiService {
   }
 
   // 转换虎扑帖子数据格式
+  private isOfficialThreadItem(post: HupuOfficialThreadItem | HupuPostListItem): post is HupuOfficialThreadItem {
+    return 'userName' in post;
+  }
+
+  private isOfficialDetail(detail: HupuOfficialDetailInfo | HupuPostDetail): detail is HupuOfficialDetailInfo {
+    return 'user' in detail;
+  }
+
+  private isOfficialComment(comment: HupuOfficialComment | HupuComment): comment is HupuOfficialComment {
+    return 'user' in comment;
+  }
+
   private transformPost(hupuPost: HupuOfficialThreadItem | HupuPostListItem): Post {
-    const picList = Array.isArray(hupuPost.picList) ? hupuPost.picList : [];
-    const images = rewriteMediaUrls(picList.map((item: { url?: string }) => item?.url).filter(Boolean) as string[]);
+    if (this.isOfficialThreadItem(hupuPost)) {
+      const picList = Array.isArray(hupuPost.picList) ? hupuPost.picList : [];
+      const images = rewriteMediaUrls(picList.map((item) => item?.url).filter(Boolean) as string[]);
+
+      return {
+        id: String(hupuPost.tid),
+        title: hupuPost.title,
+        content: rewriteHtmlMedia(hupuPost.content ?? ''),
+        author: {
+          username: hupuPost.userName,
+          avatar: rewriteMediaUrl(hupuPost.userHeader) || this.getDefaultAvatar(),
+          level: this.calculateLevel(String(hupuPost.puid)),
+          uid: String(hupuPost.puid),
+        },
+        createdAt: this.normalizeDateTime(hupuPost.time),
+        replies: Number(hupuPost.replies ?? 0),
+        views: Number(hupuPost.hits ?? hupuPost.recommendCount ?? 0),
+        likes: Number(hupuPost.recommendCount ?? 0),
+        images,
+        isTop: Boolean(hupuPost.topThread),
+        isHot: Number(hupuPost.recommendCount ?? 0) > 100,
+        url: `https://m.hupu.com/bbs/${hupuPost.tid}.html`,
+        lightReply: hupuPost.lightReplyResult ? {
+          username: hupuPost.lightReplyResult.replyUserName,
+          content: hupuPost.lightReplyResult.content,
+          quote: hupuPost.lightReplyResult.quoteContent,
+          lightCount: Number(hupuPost.lightReplyResult.lightCount ?? 0),
+        } : undefined,
+        topicName: hupuPost.topicName,
+        shareNum: Number(hupuPost.shareNum ?? 0),
+        video: hupuPost.videoThread ? {
+          cover: rewriteMediaUrl(hupuPost.video?.img),
+          duration: hupuPost.video?.humanDuration,
+          playNum: Number(hupuPost.video?.playNum ?? 0),
+          url: rewriteMediaUrl(hupuPost.video?.url),
+        } : undefined,
+      };
+    }
 
     return {
       id: String(hupuPost.tid),
       title: hupuPost.title,
-      content: hupuPost.content || '',
+      content: rewriteHtmlMedia(hupuPost.content_preview ?? ''),
       author: {
-        username: hupuPost.userName,
-        avatar: rewriteMediaUrl(hupuPost.userHeader) || this.getDefaultAvatar(),
-        level: this.calculateLevel(String(hupuPost.puid)),
-        uid: String(hupuPost.puid),
+        username: hupuPost.author_name,
+        avatar: rewriteMediaUrl(hupuPost.author_avatar) || this.getDefaultAvatar(),
+        level: this.calculateLevel(String(hupuPost.author_uid)),
+        uid: String(hupuPost.author_uid),
       },
-      createdAt: this.normalizeDateTime(hupuPost.time),
-      replies: Number(hupuPost.replies ?? 0),
-      views: Number(hupuPost.recommendCount ?? 0),
-      likes: Number(hupuPost.recommendCount ?? 0),
-      images,
-      isTop: Boolean(hupuPost.topThread),
-      isHot: Number(hupuPost.recommendCount ?? 0) > 100,
+      createdAt: this.normalizeDateTime(hupuPost.create_time ?? hupuPost.last_reply_time),
+      replies: Number(hupuPost.reply_count ?? 0),
+      views: Number(hupuPost.view_count ?? 0),
+      likes: Number(hupuPost.reply_count ?? 0),
+      images: [],
+      isTop: Boolean(hupuPost.is_top),
+      isHot: Boolean(hupuPost.is_hot),
       url: `https://m.hupu.com/bbs/${hupuPost.tid}.html`,
-      lightReply: hupuPost.lightReplyResult ? {
-        username: hupuPost.lightReplyResult.replyUserName,
-        content: hupuPost.lightReplyResult.content,
-        quote: hupuPost.lightReplyResult.quoteContent,
-        lightCount: Number(hupuPost.lightReplyResult.lightCount ?? 0),
-      } : undefined,
-      topicName: hupuPost.topicName,
-      shareNum: Number(hupuPost.shareNum ?? 0),
-      video: hupuPost.videoThread ? {
-        cover: rewriteMediaUrl(hupuPost.video?.img),
-        duration: hupuPost.video?.humanDuration,
-        playNum: Number(hupuPost.video?.playNum ?? 0),
-        url: rewriteMediaUrl(hupuPost.video?.url),
-      } : undefined,
+      lightReply: undefined,
+      topicName: undefined,
+      shareNum: undefined,
+      video: undefined,
     };
   }
 
   // 转换虎扑帖子详情数据格式
   private transformPostDetail(detail: HupuOfficialDetailInfo | HupuPostDetail): Post {
+    if (this.isOfficialDetail(detail)) {
+      const contentHtml = rewriteHtmlMedia(detail.content ?? '');
+      const images = rewriteMediaUrls(this.extractImagesFromContent(contentHtml));
+
+      return {
+        id: String(detail.tid),
+        title: detail.title ?? '',
+        content: contentHtml,
+        author: {
+          username: detail.user?.username ?? '匿名用户',
+          avatar: rewriteMediaUrl(detail.user?.header?.replace('@45h_45w_2e', '')) || this.getDefaultAvatar(),
+          level: this.calculateLevel(String(detail.user?.puid ?? detail.tid)),
+          uid: String(detail.user?.puid ?? detail.tid),
+        },
+        createdAt: this.normalizeDateTime(detail.user?.date),
+        replies: Number(detail.replies ?? 0),
+        views: Number(detail.hits ?? 0),
+        likes: Number(detail.rcmd ?? 0),
+        images,
+        isTop: detail.is_top === '1' || detail.is_top === 1,
+        isHot: Number(detail.lights ?? 0) > 100,
+        url: `https://m.hupu.com/bbs/${detail.tid}.html`,
+        lightReply: undefined,
+        topicName: detail.f_info?.f_name,
+        shareNum: Number(detail.share ?? 0),
+      };
+    }
+
     const contentHtml = rewriteHtmlMedia(detail.content ?? '');
-    const images = rewriteMediaUrls(this.extractImagesFromContent(contentHtml));
+    const images = rewriteMediaUrls([...(detail.images ?? [])]);
 
     return {
       id: String(detail.tid),
       title: detail.title,
       content: contentHtml,
       author: {
-        username: detail.user?.username ?? '匿名用户',
-        avatar: rewriteMediaUrl(detail.user?.header?.replace('@45h_45w_2e', '')) || this.getDefaultAvatar(),
-        level: this.calculateLevel(String(detail.user?.puid ?? detail.tid)),
-        uid: String(detail.user?.puid ?? detail.tid),
+        username: detail.author_name,
+        avatar: rewriteMediaUrl(detail.author_avatar) || this.getDefaultAvatar(),
+        level: this.calculateLevel(String(detail.author_uid ?? detail.tid)),
+        uid: String(detail.author_uid ?? detail.tid),
       },
-      createdAt: this.normalizeDateTime(detail.user?.date),
-      replies: Number(detail.replies ?? 0),
-      views: Number(detail.hits ?? 0),
-      likes: Number(detail.rcmd ?? 0),
+      createdAt: this.normalizeDateTime(detail.create_time),
+      replies: Number(detail.reply_count ?? 0),
+      views: Number(detail.view_count ?? 0),
+      likes: Number(detail.reply_count ?? 0),
       images,
-      isTop: detail.is_top === '1',
-      isHot: Number(detail.lights ?? 0) > 100,
+      isTop: false,
+      isHot: Number(detail.view_count ?? 0) > 10000,
       url: `https://m.hupu.com/bbs/${detail.tid}.html`,
       lightReply: undefined,
-      topicName: detail.f_info?.f_name,
-      shareNum: Number(detail.share ?? 0),
+      topicName: undefined,
+      shareNum: undefined,
     };
   }
 
   // 转换虎扑评论数据格式
   private transformComment(hupuComment: HupuOfficialComment | HupuComment): Comment {
+    if (this.isOfficialComment(hupuComment)) {
+      const content = rewriteHtmlMedia(hupuComment.content ?? '');
+      return {
+        id: String(hupuComment.pid),
+        content,
+        author: {
+          username: hupuComment.user?.username ?? '匿名评论',
+          avatar: rewriteMediaUrl(hupuComment.user?.header?.replace('@45h_45w_2e', '')) || this.getDefaultAvatar(),
+          level: this.calculateLevel(String(hupuComment.user?.puid ?? hupuComment.pid)),
+          uid: String(hupuComment.user?.puid ?? hupuComment.pid),
+        },
+        createdAt: this.normalizeDateTime(hupuComment.user?.date),
+        likes: Number(hupuComment.light ?? hupuComment.like_count ?? 0),
+        floor: Number(hupuComment.floor ?? hupuComment.pid ?? 0),
+        replies: hupuComment.replies ? Number(hupuComment.replies) : undefined,
+        quote: hupuComment.quote_info ? {
+          username: hupuComment.quote_info.username ?? '匿名评论',
+          content: rewriteHtmlMedia(hupuComment.quote_info.content ?? ''),
+        } : undefined,
+        images: rewriteMediaUrls(this.extractImagesFromContent(content)),
+      };
+    }
+
+    const content = rewriteHtmlMedia(hupuComment.content ?? '');
     return {
       id: String(hupuComment.pid),
-      content: rewriteHtmlMedia(hupuComment.content),
+      content,
       author: {
-        username: hupuComment.user?.username ?? '匿名评论',
-        avatar: rewriteMediaUrl(hupuComment.user?.header?.replace('@45h_45w_2e', '')) || this.getDefaultAvatar(),
-        level: this.calculateLevel(String(hupuComment.user?.puid ?? hupuComment.pid)),
-        uid: String(hupuComment.user?.puid ?? hupuComment.pid),
+        username: hupuComment.author_name,
+        avatar: rewriteMediaUrl(hupuComment.author_avatar) || this.getDefaultAvatar(),
+        level: this.calculateLevel(String(hupuComment.author_uid ?? hupuComment.pid)),
+        uid: String(hupuComment.author_uid ?? hupuComment.pid),
       },
-      createdAt: this.normalizeDateTime(hupuComment.user?.date),
-      likes: Number(hupuComment.light ?? hupuComment.like_count ?? 0),
+      createdAt: this.normalizeDateTime(hupuComment.create_time),
+      likes: Number(hupuComment.like_count ?? 0),
       floor: Number(hupuComment.floor ?? hupuComment.pid ?? 0),
-      replies: hupuComment.replies ? Number(hupuComment.replies) : 0,
-      quote: hupuComment.quote_info ? {
-        username: hupuComment.quote_info.username,
-        content: rewriteHtmlMedia(hupuComment.quote_info.content),
-      } : undefined,
-      images: rewriteMediaUrls(this.extractImagesFromContent(hupuComment.content ?? '')),
+      replies: hupuComment.replies ? Number(hupuComment.replies) : undefined,
+      quote: undefined,
+      images: rewriteMediaUrls(this.extractImagesFromContent(content)),
     };
   }
 
@@ -677,7 +767,66 @@ class HupuApiService {
       };
     }
   }
+
+  // 用户登录 - 通过后端 API
+  async login(username: string, password: string): Promise<LoginResponse> {
+    try {
+      const response = await fetch('/api/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ username, password }),
+      });
+
+      const data = await response.json();
+
+      if (data.success && data.data) {
+        return {
+          success: true,
+          data: {
+            authToken: data.data.authToken,
+            userInfo: data.data.userInfo,
+          },
+          message: data.message || '登录成功',
+        };
+      } else {
+        return {
+          success: false,
+          message: data.message || '登录失败，请检查用户名和密码',
+        };
+      }
+    } catch (error) {
+      console.error('Login failed:', error);
+      return {
+        success: false,
+        message: '登录失败，请稍后重试',
+      };
+    }
+  }
+
+  // 获取当前登录用户信息
+  getCurrentUser(): { authToken: string | null; userInfo: UserInfo | null } {
+    const authToken = localStorage.getItem('hupu_auth_token');
+    const userInfoStr = localStorage.getItem('hupu_user_info');
+
+    return {
+      authToken,
+      userInfo: userInfoStr ? JSON.parse(userInfoStr) : null,
+    };
+  }
+
+  // 退出登录
+  logout(): void {
+    localStorage.removeItem('hupu_auth_token');
+    localStorage.removeItem('hupu_user_info');
+  }
+
+  // 检查是否已登录
+  isLoggedIn(): boolean {
+    return !!localStorage.getItem('hupu_auth_token');
+  }
 }
 
 export const hupuApi = new HupuApiService();
-export type { Post, Comment, ApiResponse };
+export type { Post, Comment, ApiResponse, LoginResponse, UserInfo };

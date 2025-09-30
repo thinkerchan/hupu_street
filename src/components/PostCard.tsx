@@ -1,7 +1,8 @@
 import React from 'react';
-import { Eye, MessageCircle, Clock, Pin, TrendingUp, ExternalLink, ThumbsUp } from 'lucide-react';
+import { MessageCircle, Clock, Pin, TrendingUp, ExternalLink, ThumbsUp } from 'lucide-react';
 import type { Post } from '../types';
 import { rewriteMediaUrl } from '../utils/proxy';
+import { formatRelativeTime, formatCount } from '../utils/format';
 
 interface PostCardProps {
   post: Post;
@@ -9,59 +10,6 @@ interface PostCardProps {
 }
 
 const PostCard: React.FC<PostCardProps> = ({ post, onClick }) => {
-  const formatTime = (dateString: string) => {
-    if (!dateString) {
-      return '未知时间';
-    }
-
-    const normalizeDate = (value: string): Date | null => {
-      const direct = new Date(value);
-      if (!Number.isNaN(direct.getTime())) {
-        return direct;
-      }
-
-      const replaced = new Date(value.replace(/-/g, '/'));
-      if (!Number.isNaN(replaced.getTime())) {
-        return replaced;
-      }
-
-      const numeric = Number(value);
-      if (!Number.isNaN(numeric)) {
-        const timestamp = value.length === 10 ? numeric * 1000 : numeric;
-        const fromNumeric = new Date(timestamp);
-        if (!Number.isNaN(fromNumeric.getTime())) {
-          return fromNumeric;
-        }
-      }
-
-      return null;
-    };
-
-    const date = normalizeDate(dateString);
-    if (!date) {
-      return dateString;
-    }
-
-    const now = new Date();
-    const diff = now.getTime() - date.getTime();
-    const minutes = Math.floor(diff / 60000);
-    const hours = Math.floor(diff / 3600000);
-    const days = Math.floor(diff / 86400000);
-
-    if (minutes < 1) return '刚刚';
-    if (minutes < 60) return `${minutes}分钟前`;
-    if (hours < 24) return `${hours}小时前`;
-    if (days < 7) return `${days}天前`;
-    return date.toLocaleDateString('zh-CN');
-  };
-
-  const formatNumber = (num: number) => {
-    if (num >= 10000) {
-      return `${(num / 10000).toFixed(1)}万`;
-    }
-    return num.toLocaleString();
-  };
-
   const handleExternalLink = (e: React.MouseEvent) => {
     e.stopPropagation();
     window.open(post.url, '_blank');
@@ -100,7 +48,7 @@ const PostCard: React.FC<PostCardProps> = ({ post, onClick }) => {
             </div>
             <div className="flex items-center space-x-2 text-sm text-gray-500 mt-0.5">
               <Clock className="h-3 w-3" />
-              <span>{formatTime(post.createdAt)}</span>
+              <span>{formatRelativeTime(post.createdAt, '未知时间')}</span>
             </div>
           </div>
         </div>
@@ -162,7 +110,7 @@ const PostCard: React.FC<PostCardProps> = ({ post, onClick }) => {
         <div className="flex items-center space-x-4 text-gray-500">
           <div className="flex items-center space-x-1">
             <ThumbsUp className="h-4 w-4" />
-            <span>{formatNumber(post.views)}</span>
+            <span>{formatCount(post.views)}</span>
           </div>
           <div className="flex items-center space-x-1">
             <MessageCircle className="h-4 w-4" />
