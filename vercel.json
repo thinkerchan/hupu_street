@@ -1,6 +1,10 @@
 {
   "rewrites": [
     {
+      "source": "/passport/(.*)",
+      "destination": "https://passport.hupu.com/$1"
+    },
+    {
       "source": "/hupu/(.*)",
       "destination": "/api/hupu?path=$1"
     },

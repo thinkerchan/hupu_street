@@ -10,8 +10,14 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': {
-        target: process.env.VITE_API_URL || 'http://localhost:3000',
+        target: 'http://localhost:3001',
         changeOrigin: true,
+      },
+      '/passport': {
+        target: 'https://passport.hupu.com',
+        changeOrigin: true,
+        secure: true,
+        rewrite: (path) => path.replace(/^\/passport/, ''),
       },
       '/hupu': {
         target: 'https://m.hupu.com',

@@ -4,12 +4,19 @@ import Header from './components/Header';
 import PostList from './components/PostList';
 import PostDetail from './components/PostDetail';
 import SearchPage from './components/SearchPage';
-import LoginPage from './components/LoginPage';
+import HupuLoginPage from './components/HupuLoginPage';
 import { hupuApi } from './services/api';
 import type { Post, Comment, UserInfo } from './types';
 
 function App() {
-  const [currentView, setCurrentView] = useState<'list' | 'detail' | 'search' | 'login'>('list');
+  const [currentView, setCurrentView] = useState<'list' | 'detail' | 'search' | 'login'>(() => {
+    // Check initial hash for login page
+    const hash = window.location.hash;
+    if (hash === '#/login' || hash === '#/login/') {
+      return 'login';
+    }
+    return 'list';
+  });
   const [selectedPost, setSelectedPost] = useState<Post | null>(null);
   const [searchKeyword, setSearchKeyword] = useState('');
   const [initializingDetail, setInitializingDetail] = useState(false);
@@ -88,6 +95,19 @@ function App() {
       if (!hash || hash === '#' || hash === '#/') {
         if (!cancelled) {
           setCurrentView('list');
+          setSearchKeyword('');
+          setSelectedPost(null);
+          setPreloadedDetail(null);
+          selectedPostRef.current = null;
+          setInitializingDetail(false);
+        }
+        return;
+      }
+
+      // Handle login route
+      if (hash === '#/login' || hash === '#/login/') {
+        if (!cancelled) {
+          setCurrentView('login');
           setSearchKeyword('');
           setSelectedPost(null);
           setPreloadedDetail(null);
@@ -197,6 +217,7 @@ function App() {
 
   const handleShowLogin = () => {
     setCurrentView('login');
+    window.location.hash = '#/login';
   };
 
   const handleLoginSuccess = (authToken: string, userInfo: UserInfo) => {
@@ -222,7 +243,7 @@ function App() {
   return (
     <div className="min-h-screen bg-gray-50">
       {currentView === 'login' && (
-        <LoginPage onLoginSuccess={handleLoginSuccess} onBack={handleBackFromLogin} />
+        <HupuLoginPage onLoginSuccess={handleLoginSuccess} onBack={handleBackFromLogin} />
       )}
 
       {(currentView === 'list' || currentView === 'search') && (
