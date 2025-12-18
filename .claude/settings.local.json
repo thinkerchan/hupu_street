@@ -22,7 +22,12 @@
       "Bash(curl -s \"https://passport.hupu.com/password/login\" -X POST -d \"username=test&password=test\" -H \"Content-Type: application/x-www-form-urlencoded\")",
       "Bash(npm install express cors)",
       "Bash(curl -I \"https://g.alicdn.com/AWSC/AWSC/awsc.js\")",
-      "Bash(curl -s \"https://passport.hupu.com/v2/login\" -o /tmp/hupu_login_page.html)"
+      "Bash(curl -s \"https://passport.hupu.com/v2/login\" -o /tmp/hupu_login_page.html)",
+      "Bash(rm -f /Library/WebServer/Documents/cloud/github/hupu_street/src/components/LoginPage.tsx /Library/WebServer/Documents/cloud/github/hupu_street/src/components/HupuLoginPage.tsx /Library/WebServer/Documents/cloud/github/hupu_street/src/utils/login.ts /Library/WebServer/Documents/cloud/github/hupu_street/api/login.ts /Library/WebServer/Documents/cloud/github/hupu_street/test-login.js /Library/WebServer/Documents/cloud/github/hupu_street/dev-server.js)",
+      "Bash(npm run typecheck)",
+      "Bash(npm run build)",
+      "Bash(git checkout HEAD -- .vercel)",
+      "Bash(git checkout HEAD -- api/hupu.ts)"
     ],
     "deny": [],
     "ask": []

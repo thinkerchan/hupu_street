@@ -24,8 +24,9 @@ const MEDIA_HOSTS = new Set([
 ]);
 
 function buildProxyUrl(url: URL): string {
-  const encoded = encodeURIComponent(`${url.host}${url.pathname}${url.search}`.replace(/^https?:\/\//, ''));
-  return `${MEDIA_PROXY_ORIGIN}/?url=${encoded}`;
+  let isGif = url.pathname.endsWith('.gif') || url.pathname.endsWith('.GIF');
+  const encoded = (`${url.host}${url.pathname}${url.search}`.replace(/^https?:\/\//, ''));
+  return `${MEDIA_PROXY_ORIGIN}/?url=${encoded}${isGif ? '&n=-1' : ''}`;
 }
 
 export function rewriteMediaUrl(url?: string | null): string {

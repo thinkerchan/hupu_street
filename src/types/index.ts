@@ -1,19 +1,3 @@
-export interface LoginResponse {
-  success: boolean;
-  data?: {
-    authToken: string;
-    userInfo: UserInfo;
-  };
-  message?: string;
-}
-
-export interface UserInfo {
-  uid?: string;
-  username?: string;
-  avatar?: string;
-  [key: string]: any;
-}
-
 export interface Post {
   id: string;
   title: string;

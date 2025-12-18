@@ -8,8 +8,6 @@ import type {
   HupuSearchPostItem,
   SearchPost,
   SearchSortOption,
-  LoginResponse,
-  UserInfo,
 } from '../types';
 import { rewriteHtmlMedia, rewriteMediaUrl, rewriteMediaUrls } from '../utils/proxy';
 
@@ -768,70 +766,7 @@ class HupuApiService {
     }
   }
 
-  // 用户登录 - 通过后端 API
-  async login(username: string, password: string, deviceId?: string, aliRid?: string): Promise<LoginResponse> {
-    try {
-      const response = await fetch('/api/login', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          username,
-          password,
-          deviceId,
-          aliRid,
-        }),
-      });
-
-      const data = await response.json();
-
-      if (data.success && data.data) {
-        return {
-          success: true,
-          data: {
-            authToken: data.data.authToken,
-            userInfo: data.data.userInfo,
-          },
-          message: data.message || '登录成功',
-        };
-      } else {
-        return {
-          success: false,
-          message: data.message || '登录失败，请检查用户名和密码',
-        };
-      }
-    } catch (error) {
-      console.error('Login failed:', error);
-      return {
-        success: false,
-        message: '登录失败，请稍后重试',
-      };
-    }
-  }
-
-  // 获取当前登录用户信息
-  getCurrentUser(): { authToken: string | null; userInfo: UserInfo | null } {
-    const authToken = localStorage.getItem('hupu_auth_token');
-    const userInfoStr = localStorage.getItem('hupu_user_info');
-
-    return {
-      authToken,
-      userInfo: userInfoStr ? JSON.parse(userInfoStr) : null,
-    };
-  }
-
-  // 退出登录
-  logout(): void {
-    localStorage.removeItem('hupu_auth_token');
-    localStorage.removeItem('hupu_user_info');
-  }
-
-  // 检查是否已登录
-  isLoggedIn(): boolean {
-    return !!localStorage.getItem('hupu_auth_token');
-  }
 }
 
 export const hupuApi = new HupuApiService();
-export type { Post, Comment, ApiResponse, LoginResponse, UserInfo };
+export type { Post, Comment, ApiResponse };

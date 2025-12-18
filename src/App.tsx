@@ -4,39 +4,20 @@ import Header from './components/Header';
 import PostList from './components/PostList';
 import PostDetail from './components/PostDetail';
 import SearchPage from './components/SearchPage';
-import HupuLoginPage from './components/HupuLoginPage';
 import { hupuApi } from './services/api';
-import type { Post, Comment, UserInfo } from './types';
+import type { Post, Comment } from './types';
 
 function App() {
-  const [currentView, setCurrentView] = useState<'list' | 'detail' | 'search' | 'login'>(() => {
-    // Check initial hash for login page
-    const hash = window.location.hash;
-    if (hash === '#/login' || hash === '#/login/') {
-      return 'login';
-    }
-    return 'list';
-  });
+  const [currentView, setCurrentView] = useState<'list' | 'detail' | 'search'>('list');
   const [selectedPost, setSelectedPost] = useState<Post | null>(null);
   const [searchKeyword, setSearchKeyword] = useState('');
   const [initializingDetail, setInitializingDetail] = useState(false);
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [userInfo, setUserInfo] = useState<UserInfo | null>(null);
   const selectedPostRef = useRef<Post | null>(selectedPost);
   const [preloadedDetail, setPreloadedDetail] = useState<{
     post: Post;
     comments: Comment[];
     hasMoreComments: boolean;
   } | null>(null);
-
-  // Check login status on mount
-  useEffect(() => {
-    const { authToken, userInfo: savedUserInfo } = hupuApi.getCurrentUser();
-    if (authToken && savedUserInfo) {
-      setIsLoggedIn(true);
-      setUserInfo(savedUserInfo);
-    }
-  }, []);
 
   useEffect(() => {
     selectedPostRef.current = selectedPost;
@@ -95,19 +76,6 @@ function App() {
       if (!hash || hash === '#' || hash === '#/') {
         if (!cancelled) {
           setCurrentView('list');
-          setSearchKeyword('');
-          setSelectedPost(null);
-          setPreloadedDetail(null);
-          selectedPostRef.current = null;
-          setInitializingDetail(false);
-        }
-        return;
-      }
-
-      // Handle login route
-      if (hash === '#/login' || hash === '#/login/') {
-        if (!cancelled) {
-          setCurrentView('login');
           setSearchKeyword('');
           setSelectedPost(null);
           setPreloadedDetail(null);
@@ -215,46 +183,13 @@ function App() {
     [applyDetailHash],
   );
 
-  const handleShowLogin = () => {
-    setCurrentView('login');
-    window.location.hash = '#/login';
-  };
-
-  const handleLoginSuccess = (authToken: string, userInfo: UserInfo) => {
-    setIsLoggedIn(true);
-    setUserInfo(userInfo);
-    setCurrentView('list');
-    clearHash();
-  };
-
-  const handleLogout = () => {
-    hupuApi.logout();
-    setIsLoggedIn(false);
-    setUserInfo(null);
-    setCurrentView('list');
-    clearHash();
-  };
-
-  const handleBackFromLogin = () => {
-    setCurrentView('list');
-    clearHash();
-  };
-
   return (
     <div className="min-h-screen bg-gray-50">
-      {currentView === 'login' && (
-        <HupuLoginPage onLoginSuccess={handleLoginSuccess} onBack={handleBackFromLogin} />
-      )}
-
       {(currentView === 'list' || currentView === 'search') && (
         <>
           <Header
             onSearch={handleSearch}
             searchQuery={currentView === 'search' ? searchKeyword : ''}
-            isLoggedIn={isLoggedIn}
-            userInfo={userInfo}
-            onShowLogin={handleShowLogin}
-            onLogout={handleLogout}
           />
           <main className="max-w-4xl mx-auto px-4 py-6">
             {currentView === 'list' ? (
