@@ -4,11 +4,16 @@ import Header from './components/Header';
 import PostList from './components/PostList';
 import PostDetail from './components/PostDetail';
 import SearchPage from './components/SearchPage';
+import LoginPage from './components/LoginPage';
 import { hupuApi } from './services/api';
-import type { Post, Comment } from './types';
+import type { Post, Comment, UserSession } from './types';
 
 function App() {
-  const [currentView, setCurrentView] = useState<'list' | 'detail' | 'search'>('list');
+  const [currentView, setCurrentView] = useState<'list' | 'detail' | 'search' | 'login'>('list');
+  const [userSession, setUserSession] = useState<UserSession | null>(
+    // 启动时从 cookie 同步一次：覆盖之前用手机号当昵称的旧 session
+    () => hupuApi.syncSessionFromCookie() ?? hupuApi.getSession(),
+  );
   const [selectedPost, setSelectedPost] = useState<Post | null>(null);
   const [searchKeyword, setSearchKeyword] = useState('');
   const [initializingDetail, setInitializingDetail] = useState(false);
@@ -80,6 +85,17 @@ function App() {
           setSelectedPost(null);
           setPreloadedDetail(null);
           selectedPostRef.current = null;
+          setInitializingDetail(false);
+        }
+        return;
+      }
+
+      if (hash === '#/login') {
+        if (!cancelled) {
+          setCurrentView('login');
+          setSelectedPost(null);
+          selectedPostRef.current = null;
+          setPreloadedDetail(null);
           setInitializingDetail(false);
         }
         return;
@@ -171,6 +187,22 @@ function App() {
     };
   }, [clearHash]);
 
+  const handleGoToLogin = useCallback(() => {
+    setCurrentView('login');
+    window.location.hash = '#/login';
+  }, []);
+
+  const handleLoginSuccess = useCallback((session: UserSession) => {
+    setUserSession(session);
+    setCurrentView('list');
+    clearHash();
+  }, [clearHash]);
+
+  const handleLogout = useCallback(async () => {
+    await hupuApi.logout();
+    setUserSession(null);
+  }, []);
+
   const handleSelectPostFromSearch = useCallback(
     (postId: string) => {
       setSelectedPost(null);
@@ -185,11 +217,18 @@ function App() {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      {currentView === 'login' && (
+        <LoginPage onBack={handleBackToList} onLoginSuccess={handleLoginSuccess} />
+      )}
+
       {(currentView === 'list' || currentView === 'search') && (
         <>
           <Header
             onSearch={handleSearch}
             searchQuery={currentView === 'search' ? searchKeyword : ''}
+            userSession={userSession}
+            onLoginClick={handleGoToLogin}
+            onLogout={handleLogout}
           />
           <main className="max-w-4xl mx-auto px-4 py-6">
             {currentView === 'list' ? (
@@ -216,6 +255,7 @@ function App() {
             onBack={handleBackToList}
             initialComments={preloadedDetail && preloadedDetail.post.id === selectedPost.id ? preloadedDetail.comments : undefined}
             initialHasMoreComments={preloadedDetail && preloadedDetail.post.id === selectedPost.id ? preloadedDetail.hasMoreComments : undefined}
+            onLoginRequired={handleGoToLogin}
           />
         )
       )}

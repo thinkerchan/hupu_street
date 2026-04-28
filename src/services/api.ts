@@ -8,15 +8,34 @@ import type {
   HupuSearchPostItem,
   SearchPost,
   SearchSortOption,
+  LoginResult,
+  PhoneVerifyCodeResult,
+  UserSession,
+  LightReplyResult,
+  LightCancelResult,
+  CreateReplyResult,
 } from '../types';
+import JSEncrypt from 'jsencrypt';
+import SparkMD5 from 'spark-md5';
 import { rewriteHtmlMedia, rewriteMediaUrl, rewriteMediaUrls } from '../utils/proxy';
+import { getShumeiDeviceId } from './passport';
+import {
+  HUPU_PROXIES,
+  GAMES_API_VERSION_PATH,
+  HUPU_TID_HEADER,
+  APK_RSA_PUBLIC_KEY,
+  APK_SIGN_SALT,
+} from '../../lib/hupu-config';
 
 // 检查环境变量是否存在，如果不存在则使用模拟数据
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
 const API_BASE = SUPABASE_URL ? `${SUPABASE_URL}/functions/v1` : null;
-const HUPU_PROXY_PREFIX = '/hupu';
+// 所有上游域名 / 路径前缀都从 lib/hupu-config 拼，要伪装站点配置改那边即可。
+const GAMES_API_PREFIX = `${HUPU_PROXIES.gamesApi.prefix}${GAMES_API_VERSION_PATH}`;
+const HUPU_PROXY_PREFIX = HUPU_PROXIES.m.prefix;
+const BBS_PC_PREFIX = HUPU_PROXIES.bbsPc.prefix;
 const HUPU_LIST_ENDPOINT = `${HUPU_PROXY_PREFIX}/api/v2/bbs/walkingStreet/threads`;
 const HUPU_DETAIL_ENDPOINT = `${HUPU_PROXY_PREFIX}/api/v1/bbs-thread`;
 const HUPU_SEARCH_ENDPOINT = `${HUPU_PROXY_PREFIX}/api/v2/search2`;
@@ -42,6 +61,7 @@ interface HupuOfficialThreadItem {
   userName: string;
   userHeader?: string;
   puid: number | string;
+  fid?: number | string;
   time: string;
   replies?: number | string;
   hits?: number | string;
@@ -79,6 +99,7 @@ interface HupuOfficialDetailInfo {
   content?: string;
   user?: HupuOfficialDetailUser;
   f_info?: {
+    fid?: string | number;
     f_name?: string;
   };
   replies?: string | number;
@@ -338,6 +359,7 @@ class HupuApiService {
           lightCount: Number(hupuPost.lightReplyResult.lightCount ?? 0),
         } : undefined,
         topicName: hupuPost.topicName,
+        fid: hupuPost.fid != null ? String(hupuPost.fid) : undefined,
         shareNum: Number(hupuPost.shareNum ?? 0),
         video: hupuPost.videoThread ? {
           cover: rewriteMediaUrl(hupuPost.video?.img),
@@ -399,6 +421,7 @@ class HupuApiService {
         url: `https://m.hupu.com/bbs/${detail.tid}.html`,
         lightReply: undefined,
         topicName: detail.f_info?.f_name,
+        fid: detail.f_info?.fid != null ? String(detail.f_info.fid) : undefined,
         shareNum: Number(detail.share ?? 0),
       };
     }
@@ -766,6 +789,319 @@ class HupuApiService {
     }
   }
 
+  // ---- Login APIs (from APK: LoginRemoteService + HpCipher + CommonInterceptor + SignInterceptor) ----
+
+  private readonly SESSION_KEY = 'hupu_session';
+  private readonly DEVICE_ID_KEY = 'hupu_device_id';
+
+  // 协议常量从 lib/hupu-config 拿，不在类里再硬编码一份
+  private readonly RSA_PUBLIC_KEY = APK_RSA_PUBLIC_KEY;
+  private readonly SIGN_SALT = APK_SIGN_SALT;
+
+  /**
+   * 设备 ID：APK 真机上是 ANDROID_ID（hex）或 UUID。但 games-api 登录接口服务端会调
+   * Long.parseLong(deviceId)，因此必须是纯十进制数字。这里生成 15 位数字（imei 风格），
+   * 持久化在 localStorage，模拟同一台"设备"。
+   */
+  private getDeviceId(): string {
+    let id = localStorage.getItem(this.DEVICE_ID_KEY);
+    if (!id || !/^\d{15,18}$/.test(id)) {
+      id = this.generateNumericId(15);
+      localStorage.setItem(this.DEVICE_ID_KEY, id);
+    }
+    return id;
+  }
+
+  private generateNumericId(length: number): string {
+    let s = String(Math.floor(Math.random() * 9) + 1); // 首位非 0
+    while (s.length < length) {
+      s += Math.floor(Math.random() * 10);
+    }
+    return s;
+  }
+
+  /** 与 APK HpCipher.encryptByPublicKey 一致：RSA/ECB/PKCS1Padding，Base64 输出。 */
+  private rsaEncrypt(plainText: string): string {
+    const encrypt = new JSEncrypt();
+    encrypt.setPublicKey(this.RSA_PUBLIC_KEY);
+    const result = encrypt.encrypt(plainText);
+    if (!result) {
+      throw new Error('RSA encryption failed');
+    }
+    return result;
+  }
+
+  /**
+   * 与 APK RequestParams.getSign 一致：
+   * 1. key 字典序排序
+   * 2. 拼成 k1=v1&k2=v2...（不做 URL encode）
+   * 3. 末尾追加 SIGN_SALT
+   * 4. MD5 小写 hex（HPMd5 用 Integer.toHexString，等价于小写）
+   * 注：APK 中 TextUtils.isEmpty 的 value 不写入 form，因此空值字段不参与签名。
+   */
+  private computeSign(params: Record<string, string>): string {
+    const entries = Object.entries(params).filter(([, v]) => v !== '' && v != null);
+    entries.sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+    const joined = entries.map(([k, v]) => `${k}=${v}`).join('&');
+    return SparkMD5.hash(joined + this.SIGN_SALT);
+  }
+
+  /** 公共参数（CommonInterceptor + NetConfig.createInitNetParams），所有字段进入 form body 并参与签名。 */
+  private buildCommonParams(): Record<string, string> {
+    const deviceId = this.getDeviceId();
+    const session = this.getSession();
+    return {
+      android_id: deviceId,
+      client: deviceId,
+      _imei: '',
+      oaid: '',
+      teenagers: '0',
+      channel: 'hupu_main',
+      night: '0',
+      crt: String(Date.now()),
+      time_zone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Shanghai',
+      token: session?.token ?? '',
+      clientId: deviceId,
+      deviceId,
+    };
+  }
+
+  private async gamesApiPost<T>(endpoint: string, body: Record<string, string>): Promise<T> {
+    const allParams: Record<string, string> = {
+      ...this.buildCommonParams(),
+      ...body,
+    };
+
+    // 移除空值（APK 的 RequestParams.putParams 跳过 isEmpty 的 value，不写入 form）
+    const formParams: Record<string, string> = {};
+    for (const [k, v] of Object.entries(allParams)) {
+      if (v !== '' && v != null) formParams[k] = v;
+    }
+
+    formParams.sign = this.computeSign(formParams);
+
+    const formBody = new URLSearchParams(formParams).toString();
+    // CommonInterceptor 还会把 client 单独写到 URL query
+    const clientQuery = `?client=${encodeURIComponent(formParams.client ?? '')}`;
+    const response = await fetch(`${GAMES_API_PREFIX}/${endpoint}${clientQuery}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
+      body: formBody,
+    });
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    return response.json();
+  }
+
+  async sendMobileCode(phone: string): Promise<PhoneVerifyCodeResult> {
+    return this.gamesApiPost<PhoneVerifyCodeResult>('user/getMobileCode', {
+      mobile: phone,
+    });
+  }
+
+  async loginByPhone(phone: string, code: string, areaCode: string = '86'): Promise<LoginResult> {
+    const encryptedMobile = this.rsaEncrypt(phone);
+    const timeline = String(Math.floor(Date.now() / 1000));
+    return this.gamesApiPost<LoginResult>('bplapi/user/v2/loginByMobileCode', {
+      encryptedMobile,
+      areaCode,
+      mobileCode: code,
+      timeline,
+    });
+  }
+
+  async loginByAccount(account: string, password: string): Promise<LoginResult> {
+    const encryptedUsername = this.rsaEncrypt(account);
+    const timeline = String(Math.floor(Date.now() / 1000));
+    return this.gamesApiPost<LoginResult>('bplapi/user/v1/loginByEmailPassword', {
+      encryptedUsername,
+      password,
+      timeline,
+    });
+  }
+
+  async logout(): Promise<void> {
+    const session = this.getSession();
+    if (session) {
+      try {
+        await this.gamesApiPost('user/logout', { token: session.token });
+      } catch { /* ignore */ }
+    }
+    localStorage.removeItem(this.SESSION_KEY);
+  }
+
+  /** 从 .hupu.com cookie u=<puid>|... 拿当前登录用户 puid。passport 登录响应没显式返回 puid。 */
+  private getCurrentPuidFromCookie(): number {
+    const m = document.cookie.match(/(?:^|;\s*)u=([^|;]+)/);
+    return m ? Number(m[1]) : 0;
+  }
+
+  /**
+   * 解析 hupu cookie `u=<uid>|<base64(username)>|<...>|...`，返回当前登录用户信息。
+   * passport 登录响应里没有 username，必须从这个 cookie 拿。
+   */
+  getCurrentUserFromCookie(): { uid: number; username: string } | null {
+    const m = document.cookie.match(/(?:^|;\s*)u=([^;]+)/);
+    if (!m) return null;
+    const segments = m[1].split('|');
+    const uid = Number(segments[0]);
+    if (!uid) return null;
+    let username = '';
+    try {
+      const bytes = Uint8Array.from(atob(segments[1] ?? ''), (c) => c.charCodeAt(0));
+      username = new TextDecoder('utf-8').decode(bytes);
+    } catch {
+      username = '';
+    }
+    return { uid, username };
+  }
+
+  /** 用 cookie 当前用户信息覆盖/修正本地 session（昵称、uid、puid）。 */
+  syncSessionFromCookie(): UserSession | null {
+    const cookieUser = this.getCurrentUserFromCookie();
+    if (!cookieUser) return null;
+    const old = this.getSession();
+    const session: UserSession = {
+      token: old?.token ?? '',
+      uid: cookieUser.uid,
+      // PC light/createReply 等接口的 puid 字段实际收的就是 uid 值
+      puid: cookieUser.uid,
+      nickname: cookieUser.username || old?.nickname || '虎扑用户',
+      avatar: old?.avatar ?? '',
+    };
+    this.saveSession(session);
+    return session;
+  }
+
+  /**
+   * PC web 通用 cookie 调用器。在 header 里多塞一个 X-Hupu-Tid，让 vite/vercel proxy
+   * 把 Referer 重写成 bbs.hupu.com/<tid>.html（反作弊会校验 referer 必须是该帖子页）。
+   */
+  private async bbsPcPost<T = unknown>(path: string, body: unknown, tid: string | number): Promise<{
+    code: number;
+    msg: string;
+    internalCode?: string;
+    data: T | null;
+  }> {
+    const resp = await fetch(`${BBS_PC_PREFIX}${path}`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+        [HUPU_TID_HEADER]: String(tid),
+      },
+      body: JSON.stringify(body),
+    });
+    return resp.json();
+  }
+
+  /**
+   * 点亮一条评论。PC web 接口：bbs.hupu.com/pcmapi/pc/bbs/v1/reply/light
+   * 字段全部是 number：{fid, tid, pid, puid}，puid 是当前登录用户自己的 puid（不是被亮回复者）。
+   * fid 是该帖子所属板块（步行街主干道是 34，但每个帖子可能不同）。
+   */
+  async lightReply(tid: string, pid: string, fid: string): Promise<LightReplyResult> {
+    if (!this.getSession()) return { error: { id: 401, text: '请先登录' } };
+    const puid = this.getCurrentPuidFromCookie();
+    if (!puid) return { error: { id: 401, text: '登录态已失效，请重新登录' } };
+    const r = await this.bbsPcPost(
+      '/pcmapi/pc/bbs/v1/reply/light',
+      { fid: Number(fid), tid: Number(tid), pid: Number(pid), puid },
+      tid,
+    );
+    if (r.code === 1) return { status: 1 };
+    return { error: { id: r.code, text: r.msg || r.internalCode || '点亮失败' } };
+  }
+
+  /** 取消点亮。PC web 接口：bbs.hupu.com/pcmapi/pc/bbs/v1/reply/cancelLight */
+  async cancelLightReply(tid: string, pid: string, fid: string): Promise<LightCancelResult> {
+    if (!this.getSession()) return { code: 401, msg: '请先登录' };
+    const puid = this.getCurrentPuidFromCookie();
+    if (!puid) return { code: 401, msg: '登录态已失效，请重新登录' };
+    const r = await this.bbsPcPost(
+      '/pcmapi/pc/bbs/v1/reply/cancelLight',
+      { fid: Number(fid), tid: Number(tid), pid: Number(pid), puid },
+      tid,
+    );
+    if (r.code === 1) return { code: 0, msg: 'ok' };
+    return { code: r.code, msg: r.msg || r.internalCode || '取消失败' };
+  }
+
+  /**
+   * 拉 PC SSR 帖子页 HTML，从 __NEXT_DATA__ 抽取 PC 子话题 topicId 和 fid。
+   * createReply 必须用 PC topicId（177 这种），不是 m 站列表里的 topicId（1 = 步行街父话题）。
+   */
+  async getThreadPcMeta(tid: string): Promise<{ topicId?: string; fid?: string }> {
+    try {
+      const html = await fetch(`${BBS_PC_PREFIX}/${tid}.html`, {
+        credentials: 'include',
+        headers: { [HUPU_TID_HEADER]: tid },
+      }).then((r) => r.text());
+      const m = html.match(/<script id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/);
+      if (!m) return {};
+      const data = JSON.parse(m[1]);
+      const thread = data?.props?.pageProps?.detail?.thread;
+      return {
+        topicId: thread?.topicId != null ? String(thread.topicId) : undefined,
+        fid: thread?.fid != null ? String(thread.fid) : undefined,
+      };
+    } catch (e) {
+      console.warn('getThreadPcMeta failed:', e);
+      return {};
+    }
+  }
+
+  /**
+   * 发表回复。PC web 接口：bbs.hupu.com/pcmapi/pc/bbs/v1/createReply
+   * - 楼主回复（顶层）：传 {topicId, tid, content, shumeiId, deviceid}
+   * - 引用回复（针对某条评论）：再加 {pid: <被回复评论 id>, quoteId: <被回复评论 id>}
+   * 注意 deviceid 全小写，跟 light 接口的 deviceId 拼写不同（hupu 后端字段名不一致是已知现象）。
+   */
+  async replyThread(params: {
+    tid: string;
+    topicId: string;
+    content: string;
+    /** 楼层 pid，引用回复时传被回复评论的 pid */
+    pid?: string;
+    /** 引用 id，通常等于 pid；不引用时可省略 */
+    quoteId?: string;
+  }): Promise<CreateReplyResult> {
+    if (!this.getSession()) {
+      return { code: 0, msg: '请先登录', data: null };
+    }
+    const shumeiId = (await getShumeiDeviceId().catch(() => '')) || '';
+    const body: Record<string, string> = {
+      topicId: String(params.topicId),
+      tid: String(params.tid),
+      content: params.content,
+      shumeiId,
+      deviceid: shumeiId,
+    };
+    if (params.pid) body.pid = String(params.pid);
+    if (params.quoteId) body.quoteId = String(params.quoteId);
+    const r = await this.bbsPcPost<CreateReplyResult['data']>(
+      '/pcmapi/pc/bbs/v1/createReply',
+      body,
+      params.tid,
+    );
+    return r as CreateReplyResult;
+  }
+
+  /** 保存登录会话 */
+  saveSession(session: UserSession): void {
+    localStorage.setItem(this.SESSION_KEY, JSON.stringify(session));
+  }
+
+  /** 获取当前会话 */
+  getSession(): UserSession | null {
+    try {
+      const raw = localStorage.getItem(this.SESSION_KEY);
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  }
 }
 
 export const hupuApi = new HupuApiService();

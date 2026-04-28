@@ -17,6 +17,10 @@ export interface Post {
   isHot?: boolean;
   url: string;
   topicName?: string;
+  /** 板块 id，从 t_detail.f_info.fid 拿，PC web light 接口必传 */
+  fid?: string;
+  /** PC web 子话题 id，仅 PC SSR __NEXT_DATA__ 里有，createReply 接口必传 */
+  topicId?: string;
   shareNum?: number;
   lightReply?: {
     username: string;
@@ -146,4 +150,85 @@ export interface SearchPost {
 export interface SearchSortOption {
   postSort: string;
   name: string;
+}
+
+// ---- Login types (from APK reverse engineering) ----
+
+export interface LoginResultError {
+  id: number;
+  text?: string;
+}
+
+export interface BindInfo {
+  bind_name?: string;
+  channel: number;
+  is_bind: number;
+  status: number;
+}
+
+export interface LoginResponse {
+  authToken?: string;
+  token?: string;
+  uid: number;
+  puid: number;
+  nickname?: string;
+  header?: string;
+  newJr?: boolean;
+  jumpUrl?: string;
+  nickname_set_url?: string;
+  bind?: BindInfo[];
+}
+
+export interface LoginResult {
+  error?: LoginResultError;
+  result?: LoginResponse;
+}
+
+export interface PhoneVerifyCodeResponse {
+  status: number;
+  expire: number;
+}
+
+export interface PhoneVerifyCodeResult {
+  error?: { id?: string; text?: string };
+  result?: PhoneVerifyCodeResponse;
+}
+
+export interface UserSession {
+  token: string;
+  authToken?: string;
+  uid: number;
+  puid: number;
+  nickname: string;
+  avatar: string;
+}
+
+// 来自 APK bbslightapi/light/v1/replyLightNew
+export interface LightReplyResult {
+  status?: number;
+  error?: LoginResultError;
+}
+
+// 来自 APK bbslightapi/light/v1/cancelLight
+export interface LightCancelResult {
+  code?: number;
+  msg?: string;
+}
+
+// 来自 PC web /pcmapi/pc/bbs/v1/createReply
+export interface CreateReplyData {
+  pid: number;
+  uid?: number; // 注意：实际是 15 位 puid
+  content?: string;
+  header?: string;
+  postdate?: number;
+  audit_status?: number;
+  toastMsg?: string | null;
+}
+
+export interface CreateReplyResult {
+  code: number;
+  msg?: string | null;
+  internalCode?: string;
+  data?: CreateReplyData | null;
 }

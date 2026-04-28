@@ -1,12 +1,16 @@
 import React, { useState } from 'react';
-import { Search, Menu, Home } from 'lucide-react';
+import { Search, Menu, Home, User, LogOut } from 'lucide-react';
+import type { UserSession } from '../types';
 
 interface HeaderProps {
   onSearch: (query: string) => void;
   searchQuery: string;
+  userSession?: UserSession | null;
+  onLoginClick?: () => void;
+  onLogout?: () => void;
 }
 
-const Header: React.FC<HeaderProps> = ({ onSearch, searchQuery }) => {
+const Header: React.FC<HeaderProps> = ({ onSearch, searchQuery, userSession, onLoginClick, onLogout }) => {
   const [localSearchQuery, setLocalSearchQuery] = useState(searchQuery);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
@@ -47,6 +51,38 @@ const Header: React.FC<HeaderProps> = ({ onSearch, searchQuery }) => {
             </div>
           </form>
 
+          {/* User area */}
+          <div className="hidden md:flex items-center">
+            {userSession ? (
+              <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5">
+                  {userSession.avatar ? (
+                    <img src={userSession.avatar} alt="" className="w-7 h-7 rounded-full object-cover" />
+                  ) : (
+                    <div className="w-7 h-7 rounded-full bg-orange-100 flex items-center justify-center">
+                      <User className="h-4 w-4 text-orange-600" />
+                    </div>
+                  )}
+                  <span className="text-sm text-gray-700 max-w-[100px] truncate">{userSession.nickname}</span>
+                </div>
+                <button
+                  onClick={onLogout}
+                  className="p-1.5 text-gray-400 hover:text-gray-600 transition-colors"
+                  title="退出登录"
+                >
+                  <LogOut className="h-4 w-4" />
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={onLoginClick}
+                className="px-4 py-1.5 bg-gradient-to-r from-orange-500 to-red-500 text-white text-sm rounded-full hover:from-orange-600 hover:to-red-600 transition-all"
+              >
+                登录
+              </button>
+            )}
+          </div>
+
           {/* Mobile Menu Button */}
           <button
             onClick={() => setIsMenuOpen(!isMenuOpen)}
@@ -73,6 +109,33 @@ const Header: React.FC<HeaderProps> = ({ onSearch, searchQuery }) => {
                   <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
                 </div>
               </form>
+              {/* Mobile user area */}
+              <div className="mt-3">
+                {userSession ? (
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      {userSession.avatar ? (
+                        <img src={userSession.avatar} alt="" className="w-7 h-7 rounded-full object-cover" />
+                      ) : (
+                        <div className="w-7 h-7 rounded-full bg-orange-100 flex items-center justify-center">
+                          <User className="h-4 w-4 text-orange-600" />
+                        </div>
+                      )}
+                      <span className="text-sm text-gray-700">{userSession.nickname}</span>
+                    </div>
+                    <button onClick={onLogout} className="text-sm text-gray-500 hover:text-gray-700">
+                      退出登录
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={onLoginClick}
+                    className="w-full py-2 bg-gradient-to-r from-orange-500 to-red-500 text-white text-sm rounded-lg hover:from-orange-600 hover:to-red-600 transition-all"
+                  >
+                    登录
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         )}

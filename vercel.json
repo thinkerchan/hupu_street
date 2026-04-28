@@ -2,11 +2,19 @@
   "rewrites": [
     {
       "source": "/passport/(.*)",
-      "destination": "https://passport.hupu.com/$1"
+      "destination": "/api/passport?path=$1"
     },
     {
       "source": "/hupu/(.*)",
       "destination": "/api/hupu?path=$1"
+    },
+    {
+      "source": "/games-api/(.*)",
+      "destination": "/api/games-api?path=$1"
+    },
+    {
+      "source": "/bbs-pc/(.*)",
+      "destination": "/api/bbs-pc?path=$1"
     },
     {
       "source": "/(.*)",
