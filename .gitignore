@@ -24,3 +24,4 @@ playwright-mcp-artifacts
 .env
 .vercel
 .env*.local
+.claude
