@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { ArrowLeft, Phone, Mail, Loader2, ShieldCheck } from 'lucide-react';
+import { ArrowLeft, Loader2, ShieldCheck } from 'lucide-react';
 import { hupuApi } from '../services/api';
 import {
   passportApi,
@@ -9,8 +9,6 @@ import {
 } from '../services/passport';
 import type { UserSession } from '../types';
 
-type LoginTab = 'phone' | 'account';
-
 interface LoginPageProps {
   onBack: () => void;
   onLoginSuccess: (session: UserSession) => void;
@@ -19,8 +17,10 @@ interface LoginPageProps {
 const CAPTCHA_ELEMENT_ID = 'passport-captcha-element';
 const CAPTCHA_BUTTON_ID = 'passport-captcha-button';
 
+// 注：账密登录路径（bplapi/user/v1/loginByEmailPassword）已被虎扑后端针对 web 流量纯风控（一律 309），
+// 我们这里只保留手机号 + 短信验证码 + 阿里云盾滑块的 PC web 路径。
+
 const LoginPage: React.FC<LoginPageProps> = ({ onBack, onLoginSuccess }) => {
-  const [tab, setTab] = useState<LoginTab>('phone');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -179,39 +179,13 @@ const LoginPage: React.FC<LoginPageProps> = ({ onBack, onLoginSuccess }) => {
           <p className="text-gray-500 text-sm">登录后可参与社区互动</p>
         </div>
 
-        <div className="flex bg-gray-100 rounded-lg p-1 mb-6">
-          <button
-            onClick={() => {
-              setTab('phone');
-              setError('');
-            }}
-            className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-md text-sm font-medium transition-colors ${
-              tab === 'phone'
-                ? 'bg-white text-orange-600 shadow-sm'
-                : 'text-gray-500 hover:text-gray-700'
-            }`}
-          >
-            <Phone className="h-4 w-4" />
-            手机号登录
-          </button>
-          <button
-            disabled
-            title="虎扑后端对账密登录路径在 web 端做了风控，统一返回 309"
-            className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-md text-sm font-medium text-gray-300 cursor-not-allowed"
-          >
-            <Mail className="h-4 w-4" />
-            账密（暂不可用）
-          </button>
-        </div>
-
         {error && (
           <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-600">
             {error}
           </div>
         )}
 
-        {tab === 'phone' && (
-          <form onSubmit={handlePhoneLogin} className="space-y-4">
+        <form onSubmit={handlePhoneLogin} className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">手机号</label>
               <div className="flex gap-2">
@@ -231,12 +205,23 @@ const LoginPage: React.FC<LoginPageProps> = ({ onBack, onLoginSuccess }) => {
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">滑块验证</label>
-              <div
-                id={CAPTCHA_ELEMENT_ID}
-                className="min-h-[48px] border border-gray-200 rounded-lg bg-white"
-              />
+              {/* 容器：跟手机号/验证码输入框统一样式（border-gray-300 + rounded-lg + bg-white）；
+                  placeholder：absolute 覆盖在容器上，pointer-events-none 不挡 SDK 交互，
+                  captchaReady 后自动隐藏 */}
+              <div className="relative">
+                <div
+                  id={CAPTCHA_ELEMENT_ID}
+                  className="min-h-[46px] border border-gray-300 rounded-lg bg-white"
+                />
+                {!captchaReady && !captchaError && (
+                  <div className="absolute inset-0 flex items-center justify-center text-xs text-gray-400 pointer-events-none">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />
+                    验证码加载中...
+                  </div>
+                )}
+              </div>
               <div id={CAPTCHA_BUTTON_ID} className="hidden" />
-              <div className="mt-1.5 text-xs flex items-center gap-1">
+              <div className="mt-1.5 text-xs flex items-center gap-1 min-h-[16px]">
                 {aliRid ? (
                   <span className="text-emerald-600 inline-flex items-center gap-1">
                     <ShieldCheck className="h-3.5 w-3.5" />
@@ -244,11 +229,9 @@ const LoginPage: React.FC<LoginPageProps> = ({ onBack, onLoginSuccess }) => {
                   </span>
                 ) : captchaError ? (
                   <span className="text-red-500">{captchaError}</span>
-                ) : (
-                  <span className="text-gray-400">
-                    {captchaReady ? '请拖动滑块完成验证' : '滑块加载中...'}
-                  </span>
-                )}
+                ) : captchaReady ? (
+                  <span className="text-gray-400">请拖动滑块完成验证</span>
+                ) : null /* 加载中状态由 placeholder 显示，这里留白 */}
               </div>
             </div>
 
@@ -283,7 +266,6 @@ const LoginPage: React.FC<LoginPageProps> = ({ onBack, onLoginSuccess }) => {
               登录
             </button>
           </form>
-        )}
 
         <p className="mt-6 text-center text-xs text-gray-400">
           登录即表示同意虎扑用户协议和隐私政策

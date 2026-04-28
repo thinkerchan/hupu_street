@@ -91,6 +91,11 @@ function App() {
       }
 
       if (hash === '#/login') {
+        // 已登录用户访问 /login 直接跳首页，避免重复登录
+        if (hupuApi.getSession()) {
+          window.location.hash = '#/';
+          return;
+        }
         if (!cancelled) {
           setCurrentView('login');
           setSelectedPost(null);
@@ -188,6 +193,10 @@ function App() {
   }, [clearHash]);
 
   const handleGoToLogin = useCallback(() => {
+    if (hupuApi.getSession()) {
+      // 已登录就别折腾用户去登录页了
+      return;
+    }
     setCurrentView('login');
     window.location.hash = '#/login';
   }, []);

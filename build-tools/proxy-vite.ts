@@ -1,7 +1,6 @@
 /** Vite dev proxy 工厂：把一条 HupuProxyEntry 转成 vite proxy 配置项。 */
 import type { ProxyOptions } from 'vite';
-import { type HupuProxyEntry, HUPU_TID_HEADER } from './hupu-config';
-import { buildReferer, rewriteSetCookieList } from './proxy-shared';
+import { type HupuProxyEntry, HUPU_TID_HEADER, buildReferer, rewriteSetCookieList } from '../api/_lib';
 
 const TID_HEADER_LOWER = HUPU_TID_HEADER.toLowerCase();
 

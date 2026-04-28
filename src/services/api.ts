@@ -20,25 +20,21 @@ import SparkMD5 from 'spark-md5';
 import { rewriteHtmlMedia, rewriteMediaUrl, rewriteMediaUrls } from '../utils/proxy';
 import { getShumeiDeviceId } from './passport';
 import {
-  HUPU_PROXIES,
   GAMES_API_VERSION_PATH,
-  HUPU_TID_HEADER,
   APK_RSA_PUBLIC_KEY,
   APK_SIGN_SALT,
-} from '../../lib/hupu-config';
+} from '../../api/_lib';
+import { hupuFetch } from './http';
 
 // 检查环境变量是否存在，如果不存在则使用模拟数据
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
 const API_BASE = SUPABASE_URL ? `${SUPABASE_URL}/functions/v1` : null;
-// 所有上游域名 / 路径前缀都从 lib/hupu-config 拼，要伪装站点配置改那边即可。
-const GAMES_API_PREFIX = `${HUPU_PROXIES.gamesApi.prefix}${GAMES_API_VERSION_PATH}`;
-const HUPU_PROXY_PREFIX = HUPU_PROXIES.m.prefix;
-const BBS_PC_PREFIX = HUPU_PROXIES.bbsPc.prefix;
-const HUPU_LIST_ENDPOINT = `${HUPU_PROXY_PREFIX}/api/v2/bbs/walkingStreet/threads`;
-const HUPU_DETAIL_ENDPOINT = `${HUPU_PROXY_PREFIX}/api/v1/bbs-thread`;
-const HUPU_SEARCH_ENDPOINT = `${HUPU_PROXY_PREFIX}/api/v2/search2`;
+// 各 m.hupu.com endpoint 相对路径（不含代理前缀，hupuFetch 会拼）。
+const HUPU_LIST_PATH = 'api/v2/bbs/walkingStreet/threads';
+const HUPU_DETAIL_PATH = 'api/v1/bbs-thread';
+const HUPU_SEARCH_PATH = 'api/v2/search2';
 
 interface HupuOfficialLightReply {
   replyUserName: string;
@@ -213,42 +209,23 @@ class HupuApiService {
   }
 
   private async request<T>(endpoint: string, options?: RequestInit): Promise<ApiResponse<T>> {
-    // 如果没有配置 Supabase，直接返回模拟数据
+    // 已不再走 Supabase BFF（环境变量都没配），保留 stub 兼容历史调用，直接走 mock。
     if (!API_BASE || !SUPABASE_ANON_KEY) {
-      console.warn('Supabase not configured, using mock data');
       return this.getMockData<T>(endpoint);
     }
-
     try {
       const headers = {
-        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+        Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
         'Content-Type': 'application/json',
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
         ...options?.headers,
       };
-
-      const response = await fetch(`${API_BASE}/hupu-proxy${endpoint}`, {
-        headers,
-        ...options,
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
+      const response = await fetch(`${API_BASE}/hupu-proxy${endpoint}`, { headers, ...options });
+      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
       return await response.json();
     } catch (error) {
       console.error('API request failed:', error);
       throw error;
     }
-  }
-
-  private async requestOfficial<T>(url: string, options?: RequestInit): Promise<T> {
-    const response = await fetch(url, options);
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-    return response.json();
   }
 
   // 模拟数据方法
@@ -527,12 +504,11 @@ class HupuApiService {
   // 获取步行街帖子列表
   async getGambiaPosts(page: number = 1, cursor?: string): Promise<ApiResponse<Post[]>> {
     try {
-      const params = new URLSearchParams({ page: String(page) });
-      if (cursor) {
-        params.set('cursor', cursor);
-      }
-      const url = `${HUPU_LIST_ENDPOINT}?${params.toString()}`;
-      const response = await this.requestOfficial<HupuOfficialThreadListResponse>(url);
+      const response = await hupuFetch<HupuOfficialThreadListResponse>({
+        via: 'm',
+        path: HUPU_LIST_PATH,
+        query: { page, ...(cursor ? { cursor } : {}) },
+      });
       const data = response.data ?? { threadList: [] };
       const posts = (data.threadList ?? []).map((item) => this.transformPost(item));
       return {
@@ -572,8 +548,11 @@ class HupuApiService {
     }
 
     try {
-      const url = `${HUPU_DETAIL_ENDPOINT}/${tid}?page=${page}`;
-      const response = await this.requestOfficial<HupuOfficialDetailResponse>(url);
+      const response = await hupuFetch<HupuOfficialDetailResponse>({
+        via: 'm',
+        path: `${HUPU_DETAIL_PATH}/${tid}`,
+        query: { page },
+      });
       const data = response.data ?? {};
       const detail = {
         ...(data.t_detail ?? {}),
@@ -605,8 +584,11 @@ class HupuApiService {
     totalCommentPages: number;
   }>> {
     try {
-      const url = `${HUPU_DETAIL_ENDPOINT}/${tid}?page=1`;
-      const response = await this.requestOfficial<HupuOfficialDetailResponse>(url);
+      const response = await hupuFetch<HupuOfficialDetailResponse>({
+        via: 'm',
+        path: `${HUPU_DETAIL_PATH}/${tid}`,
+        query: { page: 1 },
+      });
       const data = response.data ?? {};
       const detail = {
         ...(data.t_detail ?? {}),
@@ -658,8 +640,11 @@ class HupuApiService {
   // 获取帖子评论
   async getComments(tid: string, page: number = 1): Promise<ApiResponse<Comment[]>> {
     try {
-      const url = `${HUPU_DETAIL_ENDPOINT}/${tid}?page=${page}`;
-      const response = await this.requestOfficial<HupuOfficialDetailResponse>(url);
+      const response = await hupuFetch<HupuOfficialDetailResponse>({
+        via: 'm',
+        path: `${HUPU_DETAIL_PATH}/${tid}`,
+        query: { page },
+      });
       const data = response.data ?? {};
       const comments = (data.r_list ?? []).map((item) => this.transformComment(item));
       const totalPages = Number(data.r_total_page ?? page);
@@ -685,9 +670,11 @@ class HupuApiService {
   // 搜索步行街帖子
   async searchGambiaPosts(query: string, page: number = 1): Promise<ApiResponse<Post[]>> {
     try {
-      const params = new URLSearchParams({ keyword: query, page: String(page) });
-      const url = `${HUPU_LIST_ENDPOINT}?${params.toString()}`;
-      const response = await this.requestOfficial<HupuOfficialThreadListResponse>(url);
+      const response = await hupuFetch<HupuOfficialThreadListResponse>({
+        via: 'm',
+        path: HUPU_LIST_PATH,
+        query: { keyword: query, page },
+      });
       const data = response.data ?? {};
       const posts = (data.threadList ?? []).map((item) => this.transformPost(item));
       return {
@@ -715,17 +702,20 @@ class HupuApiService {
     sort: string = 'general',
   ): Promise<ApiResponse<{ posts: SearchPost[]; sorts: SearchSortOption[]; totalPages: number }>> {
     try {
-      const params = new URLSearchParams({
-        keyword,
-        puid: '0',
-        type: 'posts',
-        topicId: '0',
+      const response = await hupuFetch<{
+        data?: { result?: any; postSortList?: Array<{ postSort: string; name: string }> };
+      }>({
+        via: 'm',
+        path: HUPU_SEARCH_PATH,
+        query: {
+          keyword,
+          puid: '0',
+          type: 'posts',
+          topicId: '0',
+          post_sort: sort,
+          page,
+        },
       });
-      params.append('post_sort', sort);
-      params.append('page', String(page));
-
-      const url = `${HUPU_SEARCH_ENDPOINT}?${params.toString()}`;
-      const response = await this.requestOfficial<{ data?: { result?: any; postSortList?: Array<{ postSort: string; name: string }> } }>(url);
       const result = response.data?.result;
 
       const items: HupuSearchPostItem[] = Array.isArray(result?.data) ? result.data : [];
@@ -880,18 +870,15 @@ class HupuApiService {
 
     formParams.sign = this.computeSign(formParams);
 
-    const formBody = new URLSearchParams(formParams).toString();
-    // CommonInterceptor 还会把 client 单独写到 URL query
-    const clientQuery = `?client=${encodeURIComponent(formParams.client ?? '')}`;
-    const response = await fetch(`${GAMES_API_PREFIX}/${endpoint}${clientQuery}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
-      body: formBody,
+    return hupuFetch<T>({
+      via: 'gamesApi',
+      // games-api 的 path 前缀含版本段 /1/8.1.12，这里拼到相对 path 上
+      path: `${GAMES_API_VERSION_PATH.replace(/^\/+/, '')}/${endpoint}`,
+      // CommonInterceptor 还会把 client 单独写到 URL query
+      query: { client: formParams.client ?? '' },
+      body: formParams,
+      contentType: 'form',
     });
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-    return response.json();
   }
 
   async sendMobileCode(phone: string): Promise<PhoneVerifyCodeResult> {
@@ -984,16 +971,7 @@ class HupuApiService {
     internalCode?: string;
     data: T | null;
   }> {
-    const resp = await fetch(`${BBS_PC_PREFIX}${path}`, {
-      method: 'POST',
-      credentials: 'include',
-      headers: {
-        'Content-Type': 'application/json',
-        [HUPU_TID_HEADER]: String(tid),
-      },
-      body: JSON.stringify(body),
-    });
-    return resp.json();
+    return hupuFetch({ via: 'bbsPc', path, body, tid });
   }
 
   /**
@@ -1034,10 +1012,12 @@ class HupuApiService {
    */
   async getThreadPcMeta(tid: string): Promise<{ topicId?: string; fid?: string }> {
     try {
-      const html = await fetch(`${BBS_PC_PREFIX}/${tid}.html`, {
-        credentials: 'include',
-        headers: { [HUPU_TID_HEADER]: tid },
-      }).then((r) => r.text());
+      const html = await hupuFetch<string>({
+        via: 'bbsPc',
+        path: `${tid}.html`,
+        tid,
+        responseType: 'text',
+      });
       const m = html.match(/<script id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/);
       if (!m) return {};
       const data = JSON.parse(m[1]);

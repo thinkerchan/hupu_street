@@ -4,9 +4,8 @@
 // - 风控: aliRid（阿里云盾滑块）+ deviceId（数美 SDK）
 // - 登录态: cookie，由 /api/passport 改写 Domain 后绑定到当前 origin
 
-import { HUPU_PROXIES, SDK_URLS, ALIYUN_CAPTCHA_CONFIG } from '../../lib/hupu-config';
-
-const PASSPORT_PREFIX = HUPU_PROXIES.passport.prefix;
+import { SDK_URLS, ALIYUN_CAPTCHA_CONFIG } from '../../api/_lib';
+import { hupuFetch } from './http';
 
 export interface PassportSendCodeBody {
   mobile: string;
@@ -28,24 +27,21 @@ export interface PassportResponse<T = unknown> {
   data?: T;
 }
 
-async function postJson<T>(path: string, body: unknown): Promise<PassportResponse<T>> {
-  const resp = await fetch(`${PASSPORT_PREFIX}${path}`, {
-    method: 'POST',
-    credentials: 'include', // 关键：让浏览器在后续请求里带回 passport 写下来的 cookie
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-  // 即使非 2xx 也尝试解析 JSON，passport 业务错误也是 200 + code != 1000
-  return resp.json();
-}
-
 export const passportApi = {
   sendMobileCode(mobile: string, way: 'common' | 'bind' = 'common'): Promise<PassportResponse> {
-    return postJson('/v3/m/2/sendCodeApp', { mobile, checkList: 'mobile', way });
+    return hupuFetch({
+      via: 'passport',
+      path: 'v3/m/2/sendCodeApp',
+      body: { mobile, checkList: 'mobile', way },
+    });
   },
 
   loginByMobile(body: PassportLoginBody): Promise<PassportResponse<PassportLoginResult>> {
-    return postJson('/v3/m/2/login/mobile', body);
+    return hupuFetch({
+      via: 'passport',
+      path: 'v3/m/2/login/mobile',
+      body,
+    });
   },
 };
 

@@ -17,6 +17,10 @@
       "destination": "/api/bbs-pc?path=$1"
     },
     {
+      "source": "/hoopchina/(.*)",
+      "destination": "/api/hoopchina?path=$1"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }

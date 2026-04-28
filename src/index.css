@@ -1,3 +1,59 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* ---- 阿里云盾滑块样式覆盖 ----
+   SDK 把弹窗注入到 body，React inline style 影响不到，必须用全局 CSS。
+   关键：embed 模式下 SDK 给 #aliyunCaptcha-captcha-body 设了较高 z-index，
+   会盖住后弹出的二次验证 popup。用阶梯式 z-index 把弹窗强行压顶。
+*/
+
+/* 嵌入式滑块容器子元素撑满父，避免左侧空白 */
+#passport-captcha-element,
+#passport-captcha-element > *,
+#passport-captcha-element #aliyunCaptcha-captcha-body,
+#passport-captcha-element [class*='aliyunCaptcha-body'] {
+  width: 100% !important;
+  box-sizing: border-box;
+}
+
+#aliyunCaptcha-captcha-wrapper {
+  margin-bottom: 0 !important;
+}
+
+/* 圆角加在 SDK 内部轨道 wrapper 上，跟外层容器 rounded-lg(0.5rem) 对齐；
+   不在外层 #passport-captcha-element 用 overflow-hidden（会裁掉 SDK 滑动时的弹出反馈） */
+#aliyunCaptcha-float-wrapper,
+#passport-captcha-element #aliyunCaptcha-captcha-body {
+  border-radius: 0.5rem !important;
+}
+
+/* 嵌入式滑块整体在外部"看起来"只是 z-index 1，但用 isolation 创建独立 stacking context
+   让内部手柄/轨道的 z-index 仍然生效（否则内部全压平会拖不动） */
+#passport-captcha-element {
+  position: relative;
+  z-index: 1;
+  isolation: isolate;
+}
+
+/* 遮罩 + 二次验证 popup 用最大 int，无论嵌入式滑块 z-index 多高都压在上面 */
+#aliyunCaptcha-mask {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 2147483646 !important;
+}
+#aliyunCaptcha-window-float,
+#aliyunCaptcha-window-popup,
+[id^='aliyunCaptcha-window-'] {
+  position: fixed !important;
+  inset: auto !important;
+  top: 50% !important;
+  left: 50% !important;
+  transform: translate(-50%, -50%) !important;
+  margin: 0 !important;
+  z-index: 2147483647 !important;
+}
+
+#passport-captcha-element,#aliyunCaptcha-float-wrapper{
+  height: 100%!important;
+}
